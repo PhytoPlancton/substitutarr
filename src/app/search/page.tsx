@@ -1,5 +1,6 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { MediaCard } from "@/components/MediaCard";
 import { Plus, Loader2, Check, AlertCircle, Zap } from "lucide-react";
@@ -19,12 +20,26 @@ type Profile = { _id: string; name: string; isDefault: boolean };
 type Toast = { kind: "success" | "error"; msg: string } | null;
 
 export default function SearchPage() {
-  const [q, setQ] = useState("");
-  const [submitted, setSubmitted] = useState("");
+  const router = useRouter();
+  const sp = useSearchParams();
+  // URL is the source of truth — refresh / share / back-button preserves the query.
+  const submitted = sp.get("q") ?? "";
+  const [q, setQ] = useState(submitted);
+  // Keep input in sync when URL changes (back/forward navigation)
+  useEffect(() => setQ(submitted), [submitted]);
+
   const [autoGrab, setAutoGrab] = useState(true);
   const [profileId, setProfileId] = useState<string | null>(null);
   const [toast, setToast] = useState<Toast>(null);
   const qc = useQueryClient();
+
+  const onSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const params = new URLSearchParams();
+    const trimmed = q.trim();
+    if (trimmed) params.set("q", trimmed);
+    router.replace(trimmed ? `/search?${params}` : "/search", { scroll: false });
+  };
 
   const { data, isFetching } = useQuery<{ results: Hit[] }>({
     queryKey: ["tmdb", submitted],
@@ -99,13 +114,7 @@ export default function SearchPage() {
       </header>
 
       <div className="flex flex-col md:flex-row gap-3">
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            setSubmitted(q);
-          }}
-          className="flex gap-2 flex-1"
-        >
+        <form onSubmit={onSubmit} className="flex gap-2 flex-1">
           <input
             autoFocus
             value={q}

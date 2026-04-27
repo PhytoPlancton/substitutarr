@@ -1,7 +1,7 @@
 "use client";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import { Film, Tv, Download, Search } from "lucide-react";
+import { Film, Tv, Download, Search, Check, Circle } from "lucide-react";
 
 type Stats = { movies: number; tv: number; downloading: number; missing: number };
 
@@ -15,6 +15,14 @@ export default function DashboardPage() {
     queryFn: async () => (await fetch("/api/downloads")).json(),
     refetchInterval: 5000,
   });
+  const { data: settings } = useQuery<{ settings: any }>({
+    queryKey: ["settings"],
+    queryFn: async () => (await fetch("/api/settings")).json(),
+  });
+  const { data: indexers } = useQuery<{ items: any[] }>({
+    queryKey: ["indexers"],
+    queryFn: async () => (await fetch("/api/indexers")).json(),
+  });
 
   const stats: Stats = {
     movies: data?.items?.filter((i) => i.type === "movie").length ?? 0,
@@ -22,6 +30,13 @@ export default function DashboardPage() {
     downloading: dl?.items?.filter((i) => i.state === "downloading").length ?? 0,
     missing: data?.items?.filter((i) => i.status === "missing" || i.status === "wanted").length ?? 0,
   };
+
+  // Steps progressively checked off as the user completes setup.
+  // The whole block hides once everything is done.
+  const qbitConfigured = !!(settings?.settings?.qbittorrent?.url || process.env.NEXT_PUBLIC_QBIT_FALLBACK);
+  const hasIndexer = (indexers?.items ?? []).filter((i) => i.enabled !== false).length > 0;
+  const hasLibrary = (data?.items?.length ?? 0) > 0;
+  const allDone = qbitConfigured && hasIndexer && hasLibrary;
 
   return (
     <div className="space-y-8">
@@ -37,19 +52,50 @@ export default function DashboardPage() {
         <Stat icon={Search} label="Wanted" value={stats.missing} />
       </div>
 
-      <section className="bg-surface border border-border rounded-lg p-6">
-        <h2 className="text-sm uppercase tracking-wider text-muted mb-3">Get started</h2>
-        <ol className="space-y-2 text-sm">
-          <li>
-            1. <Link className="text-accent hover:underline" href="/settings">Configure</Link> qBittorrent + Jellyfin + indexers.
-          </li>
-          <li>
-            2. <Link className="text-accent hover:underline" href="/search">Search</Link> a movie or show, add it to your library.
-          </li>
-          <li>3. substitutarr auto-grabs the best release every 10 minutes.</li>
-        </ol>
-      </section>
+      {!allDone && (
+        <section className="bg-surface border border-border rounded-lg p-6">
+          <h2 className="text-sm uppercase tracking-wider text-muted mb-3">Get started</h2>
+          <ol className="space-y-2 text-sm">
+            <Step
+              done={qbitConfigured && hasIndexer}
+              label={
+                <>
+                  <Link className="text-accent hover:underline" href="/settings">
+                    Configure
+                  </Link>{" "}
+                  qBittorrent + Jellyfin + indexers.
+                </>
+              }
+            />
+            <Step
+              done={hasLibrary}
+              label={
+                <>
+                  <Link className="text-accent hover:underline" href="/search">
+                    Search
+                  </Link>{" "}
+                  a movie or show, add it to your library.
+                </>
+              }
+            />
+            <Step done={false} dim label="substitutarr auto-grabs the best release every 10 minutes." />
+          </ol>
+        </section>
+      )}
     </div>
+  );
+}
+
+function Step({ done, dim, label }: { done: boolean; dim?: boolean; label: React.ReactNode }) {
+  return (
+    <li className="flex items-start gap-2">
+      {done ? (
+        <Check className="w-4 h-4 mt-0.5 text-emerald-400 shrink-0" />
+      ) : (
+        <Circle className="w-4 h-4 mt-0.5 text-muted shrink-0" />
+      )}
+      <span className={done ? "line-through text-muted" : dim ? "text-muted" : ""}>{label}</span>
+    </li>
   );
 }
 

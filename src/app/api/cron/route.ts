@@ -6,6 +6,7 @@ import { grabBest } from "@/lib/grab";
 import { getUserQbit } from "@/lib/qbittorrent";
 import { getUserJellyfin } from "@/lib/jellyfin";
 import { acquireCronLock, releaseCronLock } from "@/lib/cron-lock";
+import { recordHealth } from "@/lib/connection-health";
 import { log } from "@/lib/logger";
 
 export const runtime = "nodejs";
@@ -47,6 +48,8 @@ async function sweep(): Promise<{
         const qbit = await getUserQbit(userId);
         const hashes = active.map((d) => d.qbHash).filter(Boolean) as string[];
         const torrents = hashes.length ? await qbit.list({ hashes }) : [];
+        // qBit responded → record health (covers users who never click Test).
+        void recordHealth({ userId, service: "qbit", ok: true, detail: "reconcile ok" });
         const byHash = new Map(torrents.map((t) => [t.hash.toLowerCase(), t]));
 
         let didComplete = false;
@@ -81,6 +84,7 @@ async function sweep(): Promise<{
           if (jf) await jf.refreshAll().catch((e) => errors.push(`jellyfin: ${e.message}`));
         }
       } catch (e: any) {
+        void recordHealth({ userId, service: "qbit", ok: false, detail: e.message });
         errors.push(`qbit reconcile (${userId}): ${e.message}`);
       }
     }

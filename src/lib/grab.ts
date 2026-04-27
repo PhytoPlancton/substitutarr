@@ -6,6 +6,7 @@ import { Profile } from "@/models/Profile";
 import { searchAll } from "./indexers/registry";
 import { getUserQbit } from "./qbittorrent";
 import { ensureProfilesForUser } from "./profile-bootstrap";
+import { recordHealth } from "./connection-health";
 import type { Release } from "./indexers/types";
 
 function infoHashFromMagnet(magnet: string): string | undefined {
@@ -35,11 +36,23 @@ async function pushToQbit(
 
   const link = release.magnet ?? release.url;
   if (!link) throw new Error("release has no download URL or magnet");
-  await qbit.add(link, {
-    category,
-    savePath,
-    expectedHash: release.infoHash?.toLowerCase(),
-  });
+  try {
+    await qbit.add(link, {
+      category,
+      savePath,
+      expectedHash: release.infoHash?.toLowerCase(),
+    });
+    // Real successful add → mark qBit healthy (avoids requiring an explicit Test click)
+    void recordHealth({ userId, service: "qbit", ok: true, detail: "torrent added" });
+  } catch (e: any) {
+    void recordHealth({
+      userId,
+      service: "qbit",
+      ok: false,
+      detail: e?.message ?? String(e),
+    });
+    throw e;
+  }
 
   await Download.create({
     userId,

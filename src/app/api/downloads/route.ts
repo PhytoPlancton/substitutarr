@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { connectMongo } from "@/lib/mongo";
 import { Download } from "@/models/Download";
 import { getUserQbit } from "@/lib/qbittorrent";
+import { recordHealth } from "@/lib/connection-health";
 
 export const runtime = "nodejs";
 
@@ -21,9 +22,14 @@ export async function GET() {
     if (hashes.length) {
       const torrents = await qbit.list({ hashes });
       for (const t of torrents) live[t.hash.toLowerCase()] = t;
+    } else {
+      // No torrents to query but client construction worked — light ping.
+      await qbit.ping();
     }
-  } catch {
-    /* ignore qbit errors — show DB state */
+    void recordHealth({ userId, service: "qbit", ok: true, detail: "downloads view" });
+  } catch (e: any) {
+    void recordHealth({ userId, service: "qbit", ok: false, detail: e?.message ?? String(e) });
+    /* swallow — UI still shows DB state */
   }
 
   const merged = ours.map((d) => {

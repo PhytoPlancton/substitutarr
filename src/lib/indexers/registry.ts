@@ -7,7 +7,10 @@ import { TorznabIndexer } from "./torznab";
 import { parseRelease, type ParsedRelease } from "@/lib/release-parser";
 import { scoreRelease, type ScoreBreakdown } from "@/lib/release-scoring";
 import { queryVariants } from "@/lib/normalize";
+import { recordHealth } from "@/lib/connection-health";
 import type { ProfileDoc } from "@/models/Profile";
+
+type IndexerWithId = { id: string; name: string; indexer: Indexer };
 
 function build(doc: IndexerDoc): Indexer | null {
   switch (doc.kind) {
@@ -23,12 +26,21 @@ function build(doc: IndexerDoc): Indexer | null {
   }
 }
 
-export async function listIndexers(userId: string): Promise<Indexer[]> {
+async function listIndexersWithId(userId: string): Promise<IndexerWithId[]> {
   await connectMongo();
   const docs = (await IndexerModel.find({ userId, enabled: true })
     .sort({ priority: -1 })
-    .lean()) as unknown as IndexerDoc[];
-  return docs.map(build).filter((x): x is Indexer => !!x);
+    .lean()) as unknown as (IndexerDoc & { _id: any })[];
+  const out: IndexerWithId[] = [];
+  for (const d of docs) {
+    const indexer = build(d);
+    if (indexer) out.push({ id: d._id.toString(), name: d.name, indexer });
+  }
+  return out;
+}
+
+export async function listIndexers(userId: string): Promise<Indexer[]> {
+  return (await listIndexersWithId(userId)).map((x) => x.indexer);
 }
 
 export type ScoredRelease = Release & {
@@ -47,8 +59,8 @@ export async function searchAll(
   input: SearchInput & { altTitles?: string[]; yearMin?: number; yearMax?: number },
   profile: ProfileDoc,
 ): Promise<SearchAllResult> {
-  const indexers = await listIndexers(userId);
-  if (indexers.length === 0)
+  const pairs = await listIndexersWithId(userId);
+  if (pairs.length === 0)
     return { releases: [], rejected: [], errors: [{ indexer: "(none)", message: "no enabled indexers configured" }] };
 
   // Generate title variants. Trackers handle ":" / apostrophes / non-Latin
@@ -62,20 +74,42 @@ export async function searchAll(
   const raw: Release[] = [];
 
   // Fan out: each (indexer, title-variant) pair, in parallel
-  const tasks = indexers.flatMap((idx) =>
-    titlesToTry.map((title) => ({ idx, title })),
-  );
+  const tasks = pairs.flatMap((p) => titlesToTry.map((title) => ({ p, title })));
   const settled = await Promise.allSettled(
-    tasks.map(({ idx, title }) => idx.search({ ...input, title })),
+    tasks.map(({ p, title }) => p.indexer.search({ ...input, title })),
   );
+
+  // Aggregate per-indexer outcome — if ANY variant succeeds, indexer is healthy.
+  const perIndexer = new Map<
+    string,
+    { name: string; ok: boolean; firstError?: string; releases: number }
+  >();
+
   settled.forEach((r, i) => {
-    const { idx, title } = tasks[i];
+    const { p, title } = tasks[i];
+    const existing = perIndexer.get(p.id) ?? { name: p.name, ok: false, releases: 0 };
     if (r.status === "fulfilled") {
       raw.push(...r.value);
+      existing.ok = true;
+      existing.releases += r.value.length;
     } else {
-      errors.push({ indexer: `${idx.name}/"${title}"`, message: r.reason?.message ?? String(r.reason) });
+      const msg = r.reason?.message ?? String(r.reason);
+      if (!existing.firstError) existing.firstError = msg;
+      errors.push({ indexer: `${p.name}/"${title}"`, message: msg });
     }
+    perIndexer.set(p.id, existing);
   });
+
+  // Record health for each indexer based on actual usage outcome.
+  // Successful real searches make explicit "Test connection" optional.
+  for (const [id, agg] of perIndexer) {
+    void recordHealth({
+      userId,
+      service: `indexer:${id}`,
+      ok: agg.ok,
+      detail: agg.ok ? `${agg.releases} releases` : agg.firstError,
+    });
+  }
 
   // Dedupe by infoHash (best seeders win)
   const byKey = new Map<string, Release>();
