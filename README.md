@@ -1,6 +1,6 @@
 <div align="center">
   <h1>substitutarr</h1>
-  <p><i>Your *arr stack, but it's one app and it speaks French.</i></p>
+  <p><i>Your *arr stack, in one Next.js app — with explainable scoring.</i></p>
   <p>
     <a href="#quick-start">Quick start</a> ·
     <a href="#how-it-works">How it works</a> ·
@@ -14,7 +14,12 @@
     <a href="LICENSE"><img src="https://img.shields.io/github/license/PhytoPlancton/substitutarr?style=flat-square" /></a>
     <a href="https://github.com/PhytoPlancton/substitutarr/stargazers"><img src="https://img.shields.io/github/stars/PhytoPlancton/substitutarr?style=flat-square&color=f5b400" /></a>
     <img src="https://img.shields.io/badge/Next.js-15-black?style=flat-square&logo=next.js" />
-    <img src="https://img.shields.io/badge/made%20in-France-blue?style=flat-square" />
+  </p>
+
+  <p>
+    <img src="https://img.shields.io/badge/Made-0055A4?style=flat-square" alt="Made" />
+    <img src="https://img.shields.io/badge/in-FFFFFF?style=flat-square&labelColor=FFFFFF" alt="in" />
+    <img src="https://img.shields.io/badge/France-EF4135?style=flat-square" alt="France" />
   </p>
 
   <p>
@@ -26,22 +31,22 @@
 
 ## What & why
 
-The *arr stack is brilliant — but it's three Docker containers, three SQLite databases, three UIs, and a config drift waiting to happen. **substitutarr does the same job in one Next.js app**, with first-class French metadata, private-tracker quirks accounted for, and a scoring engine that actually tells you *why* a release was picked.
+The *arr stack is brilliant — but it's three Docker containers, three SQLite databases, three UIs, and a config drift waiting to happen. **substitutarr does the same job in one Next.js app**, with a scoring engine that actually tells you *why* a release was picked.
 
 ```text
-  Le.Diner.De.Cons.1998.VOF.1080p.BluRay.REMUX.DTS-HD.MA.5.1.AVC-SERGENT     Score: 299  ✓ grabbed
-  ───────────────────────────────────────────────────────────────────────────────────────────────
-   resolution    1080p              +70
-   source        BLURAY (REMUX)     +60
-   codec         AVC                +15
-   audio         DTS-HD MA 5.1      +30
-   language      VOF (native FR)    +80
+  Dune.Part.Two.2024.MULTi.2160p.UHD.BluRay.REMUX.DV.DTS-HD.MA.7.1.HEVC-FraMeSToR     Score: 402  ✓ grabbed
+  ─────────────────────────────────────────────────────────────────────────────────────────────────────────
+   resolution    2160p              +100
+   source        BLURAY (REMUX)     +80
+   codec         HEVC               +20
+   hdr           Dolby Vision       +30
+   audio         DTS-HD MA 7.1      +30
+   language      MULTi              +60
    tag           REMUX              +5
-   seeders       ×25                +24
-   group         SERGENT (tier-1)   +25
+   seeders       ×42                +27
+   group         FraMeSToR (tier-1) +50
    ─────────────────────────────────────────
-   Reference 4K Atmos      → fell through (no 2160p with VOF)
-   1080p VFF Balanced      ✓ matched, 6 candidates · 1 kept
+   Reference 4K Atmos      ✓ matched, 8 candidates · 1 kept
 ```
 
 That's what every grab decision looks like. Live. Per release. With every reason.
@@ -54,11 +59,11 @@ That's what every grab decision looks like. Live. Per release. With every reason
 flowchart LR
     U[User · UI / external API key] -->|search · grab| APP[substitutarr · Next.js]
     APP --> MDB[(MongoDB)]
-    APP -->|search| IDX[Private trackers<br/>c411, YGG, Torznab]
+    APP -->|search| IDX[Trackers / Indexers<br/>Torznab, YTS, EZTV]
     APP -->|push torrent| QB[qBittorrent]
     APP -->|refresh library| JF[Jellyfin]
     JF -.->|webhook ItemAdded| APP
-    APP -->|metadata FR| TMDB[TMDB]
+    APP -->|metadata| TMDB[TMDB]
     CRON{{Cron · distributed lock}} --> APP
 ```
 
@@ -79,8 +84,6 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000). Five default profiles seed on first run. Clerk is optional — without it, the app runs in single-user dev mode.
 
-> Pour les francophones : la cible 1 ce sont les trackers FR comme c411 et YGG. La majorité des défauts sont déjà calibrés en conséquence (langues VFF · VOF · MULTI, group tier-1 français, fallback chain).
-
 ---
 
 ## Features
@@ -89,13 +92,13 @@ Open [http://localhost:3000](http://localhost:3000). Five default profiles seed 
 Every search shows you the full release list, **scored across 15 dimensions**, with a human-readable reason for every rejected candidate. No more *"why didn't it grab the 4K REMUX"* mystery.
 
 ### Profiles that actually fall back
-`Reference 4K Atmos` → `1080p VFF Balanced` → `Storage Saver 720p`. If the top profile finds nothing, the chain takes over — cycle-safe, max 5 hops, configurable per item.
+`Reference 4K Atmos` → `1080p Balanced` → `Storage Saver 720p`. If the top profile finds nothing, the chain takes over — cycle-safe, max 5 hops, configurable per item.
 
 ### One app, zero extra containers
 Replaces Sonarr + Radarr + Prowlarr. One Mongo, one Next.js process, one UI. One file to grep when something breaks.
 
-### French-first metadata
-TMDB in `fr-FR` · multi-variant query (apostrophes · `:` separators · accents) · `alt_titles` fallback for non-Latin originals (anime, foreign films) · French private-tracker language tags handled natively (`VFF`, `VOF`, `TRUEFRENCH`, `MULTI`, `VOSTFR`).
+### Localized metadata
+TMDB localization · multi-variant query (apostrophes · `:` separators · accents) · `alt_titles` fallback for non-Latin originals (anime, foreign films) · multi-language audio/subs tags handled natively (any combination of dub/sub flags from the release name).
 
 <details>
 <summary><b>And 12 more</b> — multi-user with API keys, Jellyfin webhooks, SSRF guard, distributed cron lock…</summary>
@@ -123,13 +126,13 @@ TMDB in `fr-FR` · multi-variant query (apostrophes · `:` separators · accents
 | :--------------------------- | :-------------------------------: | :------------: |
 | Containers to run            |                3+                 |       1        |
 | Databases                    |          3 (SQLite each)          |   1 (Mongo)    |
-| French metadata-first        |          Plugin / manual          |    Built-in    |
+| Localized metadata first     |          Plugin / manual          |    Built-in    |
 | Score explainability         |              Limited              | Per-release    |
 | External API for clients     |              Limited              |  First-class   |
 | Multi-user                   |                No                 |  Yes (Clerk)   |
 | Maturity                     |    10+ years, battle-tested       |     Young      |
 
-substitutarr is **not** trying to dethrone the *arr stack — it's a different tradeoff: simpler ops, opinionated for francophone private trackers, with scoring you can actually read.
+substitutarr is **not** trying to dethrone the *arr stack — it's a different tradeoff: simpler ops, opinionated for private trackers, with scoring you can actually read.
 
 ---
 
@@ -144,7 +147,7 @@ Next.js 15 · TypeScript · MongoDB + Mongoose · Clerk · TanStack Query · Tai
 - [x] Multi-user with API keys
 - [x] Score-based fallback chains
 - [x] Search & explain modal
-- [x] French metadata pipeline
+- [x] Localized metadata pipeline
 - [ ] Plex support (alongside Jellyfin)
 - [ ] Sonarr / Radarr import wizard
 - [ ] Per-user notification rules (Slack, Discord, ntfy)
@@ -163,7 +166,6 @@ PRs welcome. Open an issue first for anything beyond a typo.
 - [Sonarr](https://sonarr.tv), [Radarr](https://radarr.video), [Prowlarr](https://prowlarr.com) — substitutarr stands on years of patterns pioneered by the *arr team
 - [TMDB](https://themoviedb.org) for the metadata
 - [Jellyfin](https://jellyfin.org) for being the open-source media server we deserve
-- The francophone private-tracker community for the bug reports
 
 ## License
 
