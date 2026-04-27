@@ -32,14 +32,29 @@ export async function GET() {
     /* swallow — UI still shows DB state */
   }
 
+  /** Map qBit live state to a coarse arrstack status the UI can render. */
+  const mapState = (qb?: string): string | undefined => {
+    if (!qb) return undefined;
+    if (/^(uploading|stalledUP|forcedUP|pausedUP|stoppedUP|queuedUP|checkingUP)$/.test(qb))
+      return "completed";
+    if (/^(error|missingFiles)$/.test(qb)) return "failed";
+    if (/^(pausedDL|stoppedDL)$/.test(qb)) return "paused";
+    return "downloading";
+  };
+
   const merged = ours.map((d) => {
     const t = d.qbHash ? live[d.qbHash.toLowerCase()] : undefined;
+    const fromQb = mapState(t?.state);
     return {
       ...d,
+      // Effective state — UI should prefer this over the persisted state, which
+      // can be stale until the cron sweeps. Keep raw `state` for backward compat.
+      state: fromQb ?? d.state,
       progress: t?.progress ?? d.progress ?? 0,
       qbState: t?.state,
       dlspeed: t?.dlspeed,
       eta: t?.eta,
+      sizeBytes: t?.size ?? d.sizeBytes,
     };
   });
 
