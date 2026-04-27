@@ -17,36 +17,38 @@ import {
   Tv,
 } from "lucide-react";
 import type { ComponentType } from "react";
+import { useT } from "@/lib/i18n/I18nProvider";
+import { LocaleSwitcher } from "@/components/LocaleSwitcher";
 
 type DotKind = "red" | "amber" | null;
 
 type Item = {
   href: string;
-  label: string;
+  labelKey: string;
   icon: ComponentType<{ className?: string }>;
   /** Returns the dot to show: red = error/missing config, amber = stale/never tested, null = healthy/no dot. */
   statusDot?: (ctx: SidebarStatus) => DotKind;
 };
 
-type Section = { header: string; items: Item[] };
+type Section = { headerKey: string; items: Item[] };
 
 const SECTIONS: Section[] = [
   {
-    header: "Entertainment",
+    headerKey: "nav.entertainment",
     items: [
-      { href: "/", label: "Dashboard", icon: LayoutDashboard },
-      { href: "/search", label: "Search", icon: Search },
-      { href: "/library", label: "Library", icon: Film },
-      { href: "/downloads", label: "Downloads", icon: Download },
+      { href: "/", labelKey: "nav.dashboard", icon: LayoutDashboard },
+      { href: "/search", labelKey: "nav.search", icon: Search },
+      { href: "/library", labelKey: "nav.library", icon: Film },
+      { href: "/downloads", labelKey: "nav.downloads", icon: Download },
     ],
   },
   {
-    header: "Settings",
+    headerKey: "nav.settings",
     items: [
-      { href: "/settings/profiles", label: "Profiles", icon: SlidersHorizontal },
+      { href: "/settings/profiles", labelKey: "nav.profiles", icon: SlidersHorizontal },
       {
         href: "/settings/download-client",
-        label: "Download client",
+        labelKey: "nav.downloadClient",
         icon: HardDriveDownload,
         statusDot: (s) => {
           if (!s.qbitConfigured) return "red";
@@ -57,7 +59,7 @@ const SECTIONS: Section[] = [
       },
       {
         href: "/settings/library-server",
-        label: "Library server",
+        labelKey: "nav.libraryServer",
         icon: Server,
         statusDot: (s) => {
           if (!s.jellyfinConfigured) return null; // optional
@@ -66,10 +68,10 @@ const SECTIONS: Section[] = [
           return null;
         },
       },
-      { href: "/settings/paths", label: "Paths", icon: FolderTree },
+      { href: "/settings/paths", labelKey: "nav.paths", icon: FolderTree },
       {
         href: "/settings/indexers",
-        label: "Indexers",
+        labelKey: "nav.indexers",
         icon: Rss,
         statusDot: (s) => {
           if (!s.hasIndexer) return "red";
@@ -78,7 +80,7 @@ const SECTIONS: Section[] = [
           return null;
         },
       },
-      { href: "/settings/api-keys", label: "API keys", icon: KeyRound },
+      { href: "/settings/api-keys", labelKey: "nav.apiKeys", icon: KeyRound },
     ],
   },
 ];
@@ -95,6 +97,7 @@ type SidebarStatus = {
 
 export function Sidebar({ authEnabled = true }: { authEnabled?: boolean }) {
   const path = usePathname();
+  const t = useT();
 
   const { data: settings } = useQuery<{ settings: any }>({
     queryKey: ["settings"],
@@ -134,12 +137,12 @@ export function Sidebar({ authEnabled = true }: { authEnabled?: boolean }) {
 
       <nav className="flex-1 flex flex-col">
         {SECTIONS.map((section, sIdx) => (
-          <div key={section.header} className={sIdx === 0 ? "" : "mt-6"}>
+          <div key={section.headerKey} className={sIdx === 0 ? "" : "mt-6"}>
             <div className="px-3 mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted/70">
-              {section.header}
+              {t(section.headerKey)}
             </div>
             <div className="flex flex-col gap-0.5">
-              {section.items.map(({ href, label, icon: Icon, statusDot }) => {
+              {section.items.map(({ href, labelKey, icon: Icon, statusDot }) => {
                 const active =
                   href === "/" ? path === "/" : path === href || path.startsWith(href + "/");
                 const dot = statusDot?.(status) ?? null;
@@ -154,10 +157,10 @@ export function Sidebar({ authEnabled = true }: { authEnabled?: boolean }) {
                     }`}
                   >
                     <Icon className="w-4 h-4" />
-                    {label}
+                    {t(labelKey)}
                     {dot && (
                       <span
-                        title={dot === "red" ? "Error or missing config" : "Never tested or stale"}
+                        title={dot === "red" ? t("nav.errorDot") : t("nav.untestedDot")}
                         className={`ml-auto w-1.5 h-1.5 rounded-full ${
                           dot === "red" ? "bg-rose-500" : "bg-amber-500"
                         }`}
@@ -171,15 +174,16 @@ export function Sidebar({ authEnabled = true }: { authEnabled?: boolean }) {
         ))}
       </nav>
 
-      <div className="px-2 pt-4 border-t border-border">
+      <div className="px-2 pt-4 border-t border-border flex items-center justify-between gap-2">
         {authEnabled ? (
           <UserButton afterSignOutUrl="/sign-in" />
         ) : (
-          <div className="text-xs text-muted">
-            <div className="font-medium text-amber-400">Dev mode</div>
-            <div>Set CLERK_SECRET_KEY to enable auth.</div>
+          <div className="text-xs text-muted min-w-0 flex-1">
+            <div className="font-medium text-amber-400 truncate">{t("nav.devMode")}</div>
+            <div className="truncate">{t("nav.devModeDetail")}</div>
           </div>
         )}
+        <LocaleSwitcher />
       </div>
     </aside>
   );

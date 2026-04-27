@@ -1,6 +1,7 @@
 "use client";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { X } from "lucide-react";
+import { useT } from "@/lib/i18n/I18nProvider";
 
 type Dl = {
   _id: string;
@@ -33,6 +34,7 @@ const fmtEta = (s?: number) => {
 };
 
 export default function DownloadsPage() {
+  const t = useT();
   const qc = useQueryClient();
   const { data } = useQuery<{ items: Dl[] }>({
     queryKey: ["downloads"],
@@ -53,13 +55,13 @@ export default function DownloadsPage() {
   return (
     <div className="space-y-6">
       <header>
-        <h1 className="text-2xl font-semibold">Downloads</h1>
-        <p className="text-muted text-sm">Live from qBittorrent — auto-refresh 3s.</p>
+        <h1 className="text-2xl font-semibold">{t("downloads.title")}</h1>
+        <p className="text-muted text-sm">{t("downloads.subtitle")}</p>
       </header>
 
       {items.length === 0 ? (
         <div className="bg-surface border border-border rounded-lg p-10 text-center text-muted">
-          No active downloads.
+          {t("downloads.empty")}
         </div>
       ) : (
         <div className="bg-surface border border-border rounded-lg divide-y divide-border">
@@ -77,7 +79,7 @@ export default function DownloadsPage() {
                 </div>
                 <button
                   onClick={() =>
-                    confirm(`Remove "${d.title}" (delete files too)?`)
+                    confirm(t("downloads.removeConfirm", { title: d.title }))
                       ? remove.mutate({ id: d._id, files: true })
                       : remove.mutate({ id: d._id, files: false })
                   }

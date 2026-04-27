@@ -2,10 +2,12 @@
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { Film, Tv, Download, Search, Check, Circle } from "lucide-react";
+import { useT } from "@/lib/i18n/I18nProvider";
 
 type Stats = { movies: number; tv: number; downloading: number; missing: number };
 
 export default function DashboardPage() {
+  const t = useT();
   const { data } = useQuery<{ items: any[] }>({
     queryKey: ["library"],
     queryFn: async () => (await fetch("/api/library")).json(),
@@ -41,29 +43,32 @@ export default function DashboardPage() {
   return (
     <div className="space-y-8">
       <header>
-        <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
-        <p className="text-muted text-sm">Une seule app, zéro container en plus.</p>
+        <h1 className="text-2xl font-semibold tracking-tight">{t("dashboard.title")}</h1>
+        <p className="text-muted text-sm">{t("dashboard.subtitle")}</p>
       </header>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Stat icon={Film} label="Movies" value={stats.movies} />
-        <Stat icon={Tv} label="TV Shows" value={stats.tv} />
-        <Stat icon={Download} label="Downloading" value={stats.downloading} />
-        <Stat icon={Search} label="Wanted" value={stats.missing} />
+        <Stat icon={Film} label={t("dashboard.statsMovies")} value={stats.movies} />
+        <Stat icon={Tv} label={t("dashboard.statsTv")} value={stats.tv} />
+        <Stat icon={Download} label={t("dashboard.statsDownloading")} value={stats.downloading} />
+        <Stat icon={Search} label={t("dashboard.statsWanted")} value={stats.missing} />
       </div>
 
       {!allDone && (
         <section className="bg-surface border border-border rounded-lg p-6">
-          <h2 className="text-sm uppercase tracking-wider text-muted mb-3">Get started</h2>
+          <h2 className="text-sm uppercase tracking-wider text-muted mb-3">
+            {t("dashboard.getStarted")}
+          </h2>
           <ol className="space-y-2 text-sm">
             <Step
               done={qbitConfigured && hasIndexer}
               label={
                 <>
+                  {t("dashboard.step1Pre")}
                   <Link className="text-accent hover:underline" href="/settings">
-                    Configure
-                  </Link>{" "}
-                  qBittorrent + Jellyfin + indexers.
+                    {t("dashboard.step1Action")}
+                  </Link>
+                  {t("dashboard.step1Post")}
                 </>
               }
             />
@@ -71,14 +76,15 @@ export default function DashboardPage() {
               done={hasLibrary}
               label={
                 <>
+                  {t("dashboard.step2Pre")}
                   <Link className="text-accent hover:underline" href="/search">
-                    Search
-                  </Link>{" "}
-                  a movie or show, add it to your library.
+                    {t("dashboard.step2Action")}
+                  </Link>
+                  {t("dashboard.step2Post")}
                 </>
               }
             />
-            <Step done={false} dim label="substitutarr auto-grabs the best release every 10 minutes." />
+            <Step done={false} dim label={t("dashboard.step3")} />
           </ol>
         </section>
       )}

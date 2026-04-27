@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { Loader2, Plug, AlertCircle, Check } from "lucide-react";
 import type { ConnStatus } from "./StatusDot";
+import { useT } from "@/lib/i18n/I18nProvider";
 
 export type TestResult = { ok: boolean; title?: string; detail?: string };
 
@@ -32,6 +33,7 @@ export function TestSaveButtons({
   /** Optional callback to push status to the parent (for the page header dot). */
   onStatus?: (s: ConnStatus, result: TestResult | null) => void;
 }) {
+  const t = useT();
   const [testing, setTesting] = useState(false);
   const [saving, setSaving] = useState(false);
   const [result, setResult] = useState<TestResult | null>(null);
@@ -76,7 +78,7 @@ export function TestSaveButtons({
           <div className="flex items-start gap-2">
             <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-rose-400" />
             <div className="flex-1 text-sm">
-              <p className="font-medium text-rose-300">{result.title ?? "Connection failed"}</p>
+              <p className="font-medium text-rose-300">{result.title ?? t("test.connectionFailed")}</p>
               {result.detail && (
                 <p className="mt-1 font-mono text-xs text-rose-400/80 break-all">{result.detail}</p>
               )}
@@ -87,7 +89,7 @@ export function TestSaveButtons({
 
       {savedFlash && (
         <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 p-3 flex items-center gap-2 text-sm text-emerald-300">
-          <Check className="h-4 w-4" /> Tested + saved successfully.
+          <Check className="h-4 w-4" /> {t("test.testedAndSaved")}
         </div>
       )}
 
@@ -99,7 +101,7 @@ export function TestSaveButtons({
           className="inline-flex items-center gap-2 rounded-md border border-border bg-surface px-3 py-1.5 text-sm font-medium hover:bg-white/5 disabled:opacity-50"
         >
           {testing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plug className="h-4 w-4" />}
-          Test connection
+          {t("test.testConnection")}
         </button>
         <button
           type="button"
@@ -108,7 +110,7 @@ export function TestSaveButtons({
           className="inline-flex items-center gap-2 rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-white hover:bg-accent/90 disabled:opacity-50"
         >
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-          Test &amp; save
+          {t("test.testAndSave")}
         </button>
       </div>
     </div>

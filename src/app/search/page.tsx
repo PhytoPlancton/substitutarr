@@ -4,6 +4,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { MediaCard } from "@/components/MediaCard";
 import { Plus, Loader2, Check, AlertCircle, Zap } from "lucide-react";
+import { useT } from "@/lib/i18n/I18nProvider";
 
 type Hit = {
   tmdbId: number;
@@ -20,6 +21,7 @@ type Profile = { _id: string; name: string; isDefault: boolean };
 type Toast = { kind: "success" | "error"; msg: string } | null;
 
 export default function SearchPage() {
+  const t = useT();
   const router = useRouter();
   const sp = useSearchParams();
   // URL is the source of truth — refresh / share / back-button preserves the query.
@@ -83,22 +85,22 @@ export default function SearchPage() {
       qc.invalidateQueries({ queryKey: ["library"] });
       qc.invalidateQueries({ queryKey: ["downloads"] });
       if (!autoGrab) {
-        setToast({ kind: "success", msg: `Ajouté à la library` });
+        setToast({ kind: "success", msg: t("search.addedNoGrab") });
       } else if (resp?.grabbed) {
         setToast({
           kind: "success",
-          msg: `Ajouté + grab lancé via "${resp.grab?.profile}"`,
+          msg: t("search.addedAndGrabbed", { profile: resp.grab?.profile ?? "?" }),
         });
       } else {
         setToast({
           kind: "error",
-          msg: `Ajouté mais grab échoué: ${resp?.grab?.error ?? "?"}`,
+          msg: t("search.addError", { error: resp?.grab?.error ?? "?" }),
         });
       }
       setTimeout(() => setToast(null), 6000);
     },
     onError: (e: any) => {
-      setToast({ kind: "error", msg: e.message ?? "erreur ajout" });
+      setToast({ kind: "error", msg: e.message ?? "?" });
       setTimeout(() => setToast(null), 6000);
     },
   });
@@ -109,8 +111,8 @@ export default function SearchPage() {
   return (
     <div className="space-y-6">
       <header>
-        <h1 className="text-2xl font-semibold">Search</h1>
-        <p className="text-muted text-sm">Movies and TV in one box.</p>
+        <h1 className="text-2xl font-semibold">{t("search.title")}</h1>
+        <p className="text-muted text-sm">{t("search.subtitle")}</p>
       </header>
 
       <div className="flex flex-col md:flex-row gap-3">
@@ -119,11 +121,11 @@ export default function SearchPage() {
             autoFocus
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="The Bear, Dune, Severance..."
+            placeholder={t("search.placeholder")}
             className="flex-1 bg-surface border border-border rounded-md px-4 py-2.5 outline-none focus:border-accent"
           />
           <button className="px-4 py-2.5 bg-accent rounded-md font-medium text-white hover:bg-accent/90">
-            Search
+            {t("search.button")}
           </button>
         </form>
 
@@ -136,7 +138,7 @@ export default function SearchPage() {
               className="accent-accent"
             />
             <Zap className="w-3.5 h-3.5 text-accent" />
-            Auto-grab
+            {t("search.autoGrab")}
           </label>
           <span className="text-muted">·</span>
           <select
@@ -144,9 +146,9 @@ export default function SearchPage() {
             onChange={(e) => setProfileId(e.target.value || null)}
             disabled={!autoGrab}
             className="bg-bg border border-border rounded px-2 py-1 text-xs disabled:opacity-50"
-            title="Profil utilisé pour l'auto-grab"
+            title={t("search.profileTooltip")}
           >
-            <option value="">— default ({defaultProfileName}) —</option>
+            <option value="">— {t("search.profileDefault", { name: defaultProfileName })} —</option>
             {profiles?.items?.map((p) => (
               <option key={p._id} value={p._id}>
                 {p.name}
@@ -176,7 +178,7 @@ export default function SearchPage() {
 
       {isFetching && (
         <div className="flex items-center gap-2 text-muted text-sm">
-          <Loader2 className="w-4 h-4 animate-spin" /> Searching TMDB...
+          <Loader2 className="w-4 h-4 animate-spin" /> {t("search.searching")}
         </div>
       )}
 
@@ -195,14 +197,14 @@ export default function SearchPage() {
               rightSlot={
                 owned ? (
                   <span
-                    title={`Already in library — status: ${owned.status}`}
+                    title={t("search.alreadyInLibrary", { status: owned.status })}
                     className="p-1 rounded text-emerald-400 bg-emerald-500/10"
                   >
                     <Check className="w-4 h-4" />
                   </span>
                 ) : (
                   <button
-                    title={autoGrab ? "Add + auto-grab" : "Add to library only"}
+                    title={autoGrab ? t("search.addAndGrab") : t("search.addToLibrary")}
                     disabled={adding}
                     onClick={(e) => {
                       e.stopPropagation();

@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { X, Zap, Loader2, ChevronDown, ChevronUp, Star } from "lucide-react";
+import { useT } from "@/lib/i18n/I18nProvider";
 
 type Reason = { source: string; points: number };
 type ScoredRelease = {
@@ -38,6 +39,7 @@ const fmtBytes = (b?: number) => {
 };
 
 export function SearchModal({ mediaId, mediaTitle, onClose }: Props) {
+  const t = useT();
   const qc = useQueryClient();
   const { data: profiles } = useQuery<{ items: Profile[] }>({
     queryKey: ["profiles"],
@@ -95,7 +97,7 @@ export function SearchModal({ mediaId, mediaTitle, onClose }: Props) {
       qc.invalidateQueries({ queryKey: ["downloads"] });
       qc.invalidateQueries({ queryKey: ["library"] });
       if (r.ok) onClose();
-      else alert(`Grab failed: ${r.error}`);
+      else alert(t("searchModal.grabFailed", { error: r.error ?? "?" }));
     },
   });
 
@@ -106,18 +108,22 @@ export function SearchModal({ mediaId, mediaTitle, onClose }: Props) {
           <div>
             <h2 className="text-lg font-semibold">{mediaTitle}</h2>
             <div className="text-xs text-muted mt-1 flex items-center gap-3">
-              <span>Profile:</span>
+              <span>{t("searchModal.profileLabel")}</span>
               <select
                 value={profileId ?? ""}
                 onChange={(e) => setProfileId(e.target.value || null)}
                 className="bg-bg border border-border rounded px-2 py-1 text-xs"
               >
-                <option value="">— default —</option>
+                <option value="">{t("searchModal.profileDefault")}</option>
                 {profiles?.items?.map((p) => (
                   <option key={p._id} value={p._id}>{p.name}</option>
                 ))}
               </select>
-              {data && <span>· {data.releases.length} accepted · {data.rejected.length} rejected</span>}
+              {data && (
+                <span>
+                  · {t("searchModal.summary", { accepted: data.releases.length, rejected: data.rejected.length })}
+                </span>
+              )}
             </div>
           </div>
           <button onClick={onClose} className="p-2 rounded hover:bg-white/5"><X className="w-5 h-5" /></button>
@@ -126,7 +132,7 @@ export function SearchModal({ mediaId, mediaTitle, onClose }: Props) {
         <div className="p-5 space-y-6 max-h-[70vh] overflow-auto">
           {isFetching && (
             <div className="flex items-center justify-center gap-2 text-muted py-12">
-              <Loader2 className="w-4 h-4 animate-spin" /> Searching all indexers...
+              <Loader2 className="w-4 h-4 animate-spin" /> {t("searchModal.searching")}
             </div>
           )}
 
@@ -140,8 +146,14 @@ export function SearchModal({ mediaId, mediaTitle, onClose }: Props) {
 
           {data && (
             <>
-              <Section title={`Accepted by "${data.profile}" (${data.releases.length})`} subtitle="Sorted by score · highest = chosen by auto-grab.">
-                {data.releases.length === 0 && <Empty msg="None — try a more permissive profile or check the rejection reasons below." />}
+              <Section
+                title={t("searchModal.acceptedTitle", {
+                  profile: data.profile,
+                  count: data.releases.length,
+                })}
+                subtitle={t("searchModal.acceptedSubtitle")}
+              >
+                {data.releases.length === 0 && <Empty msg={t("searchModal.emptyAccepted")} /> }
                 {data.releases.map((r, i) => (
                   <ReleaseRow
                     key={r.infoHash ?? r.title}
@@ -161,8 +173,8 @@ export function SearchModal({ mediaId, mediaTitle, onClose }: Props) {
 
               {data.rejected.length > 0 && (
                 <Section
-                  title={`Rejected by profile (${data.rejected.length})`}
-                  subtitle="Why each release was filtered out. You can still force-grab any of them."
+                  title={t("searchModal.rejectedTitle", { count: data.rejected.length })}
+                  subtitle={t("searchModal.rejectedSubtitle")}
                 >
                   {data.rejected.map((r) => (
                     <ReleaseRow

@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Trash2, Plug, Loader2, AlertCircle } from "lucide-react";
 import { SettingsHeader } from "@/components/SettingsForm";
 import { StatusDot, type ConnStatus, relativeTime } from "@/components/StatusDot";
+import { useT } from "@/lib/i18n/I18nProvider";
 
 type IndexerItem = {
   _id: string;
@@ -16,6 +17,7 @@ type IndexerItem = {
 };
 
 export default function IndexersPage() {
+  const t = useT();
   const qc = useQueryClient();
   const { data } = useQuery<{ items: IndexerItem[] }>({
     queryKey: ["indexers"],
@@ -54,15 +56,12 @@ export default function IndexersPage() {
 
   return (
     <div className="space-y-6 max-w-3xl">
-      <SettingsHeader
-        title="Indexers"
-        description="Sources de releases. Torznab (YGG, c411…) recommandé pour les trackers privés FR. Test connection sur chaque ligne pour vérifier."
-      />
+      <SettingsHeader title={t("indexers.title")} description={t("indexers.description")} />
 
       <section className="bg-surface border border-border rounded-lg p-5 space-y-4">
         <div className="space-y-2">
           {(data?.items ?? []).length === 0 && (
-            <p className="text-sm text-muted">Aucun indexer encore — ajoute-en un ci-dessous.</p>
+            <p className="text-sm text-muted">{t("indexers.none")}</p>
           )}
           {(data?.items ?? []).map((i) => (
             <IndexerRow
@@ -70,16 +69,18 @@ export default function IndexersPage() {
               indexer={i}
               health={health?.services?.[`indexer:${i._id}`]}
               onTested={() => qc.invalidateQueries({ queryKey: ["health-services"] })}
-              onDelete={() => confirm(`Supprimer ${i.name} ?`) && del.mutate(i._id)}
+              onDelete={() =>
+                confirm(t("indexers.deleteConfirm", { name: i.name })) && del.mutate(i._id)
+              }
             />
           ))}
         </div>
 
         <div className="border-t border-border pt-4 space-y-3">
-          <h3 className="text-xs uppercase tracking-wider text-muted">Add new indexer</h3>
+          <h3 className="text-xs uppercase tracking-wider text-muted">{t("indexers.addNew")}</h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <input
-              placeholder="Name"
+              placeholder={t("indexers.name")}
               value={draft.name ?? ""}
               onChange={(e) => setDraft({ ...draft, name: e.target.value })}
               className="bg-bg border border-border rounded-md px-3 py-2 text-sm"
@@ -94,14 +95,14 @@ export default function IndexersPage() {
               <option value="eztv">EZTV (TV)</option>
             </select>
             <input
-              placeholder="URL (https://...)"
+              placeholder={t("indexers.url")}
               value={draft.url ?? ""}
               onChange={(e) => setDraft({ ...draft, url: e.target.value })}
               className="bg-bg border border-border rounded-md px-3 py-2 text-sm"
             />
             {draft.kind === "torznab" && (
               <input
-                placeholder="API key"
+                placeholder={t("indexers.apiKey")}
                 type="password"
                 value={draft.apiKey ?? ""}
                 onChange={(e) => setDraft({ ...draft, apiKey: e.target.value })}
@@ -113,7 +114,7 @@ export default function IndexersPage() {
               disabled={!draft.name || add.isPending}
               className="flex items-center justify-center gap-1 bg-accent rounded-md px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
             >
-              <Plus className="w-4 h-4" /> Add
+              <Plus className="w-4 h-4" /> {t("indexers.add")}
             </button>
           </div>
         </div>
@@ -133,6 +134,7 @@ function IndexerRow({
   onTested: () => void;
   onDelete: () => void;
 }) {
+  const t = useT();
   const [testing, setTesting] = useState(false);
   const [localStatus, setLocalStatus] = useState<ConnStatus | null>(null);
   const [localDetail, setLocalDetail] = useState<string | undefined>();
@@ -175,14 +177,16 @@ function IndexerRow({
             <div className="text-muted text-xs truncate mt-0.5">{indexer.url}</div>
           )}
           {hint && status !== "unknown" && (
-            <div className="text-muted/70 text-[11px] mt-0.5">tested {hint}</div>
+            <div className="text-muted/70 text-[11px] mt-0.5">
+              {t("indexers.testedRel", { when: hint })}
+            </div>
           )}
         </div>
         <div className="flex items-center gap-1 shrink-0">
           <button
             onClick={handleTest}
             disabled={testing}
-            title="Test connection"
+            title={t("indexers.testTitle")}
             className="p-1.5 rounded border border-border hover:bg-white/5 disabled:opacity-50"
           >
             {testing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plug className="w-3.5 h-3.5" />}
@@ -190,7 +194,7 @@ function IndexerRow({
           <button
             onClick={onDelete}
             className="p-1.5 rounded hover:bg-rose-500/15 text-rose-400"
-            title="Delete"
+            title={t("indexers.deleteTitle")}
           >
             <Trash2 className="w-3.5 h-3.5" />
           </button>
@@ -203,7 +207,7 @@ function IndexerRow({
             className="flex items-center gap-1 text-xs text-rose-400 hover:underline"
           >
             <AlertCircle className="w-3 h-3" />
-            {showDetail ? "Hide details" : "Show details"}
+            {showDetail ? t("indexers.hideDetails") : t("indexers.showDetails")}
           </button>
           {showDetail && (
             <pre className="mt-2 text-[11px] font-mono text-rose-400/80 break-all whitespace-pre-wrap">

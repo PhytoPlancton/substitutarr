@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Star, Trash2, Save, Plus, ChevronDown, ChevronUp } from "lucide-react";
+import { useT } from "@/lib/i18n/I18nProvider";
 
 type Profile = {
   _id: string;
@@ -24,6 +25,7 @@ const LANG_OPTIONS = ["VFF", "TRUEFRENCH", "MULTI", "FRENCH", "VFI", "VFQ", "VF2
 const SOURCE_OPTIONS = ["REMUX", "BLURAY", "WEB-DL", "WEBRIP", "BDRIP", "BRRIP", "HDTV", "DVDRIP", "HDRIP", "DVDSCR", "TC", "TS", "HDCAM", "CAM"];
 
 export default function ProfilesPage() {
+  const t = useT();
   const qc = useQueryClient();
   const { data } = useQuery<{ items: Profile[] }>({
     queryKey: ["profiles"],
@@ -43,8 +45,8 @@ export default function ProfilesPage() {
     <div className="space-y-6">
       <header className="flex items-end justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">Download profiles</h1>
-          <p className="text-muted text-sm">Filtres + scoring qui choisissent automatiquement la meilleure release. Chaîne fallback si aucune release ne passe.</p>
+          <h1 className="text-2xl font-semibold">{t("profiles.title")}</h1>
+          <p className="text-muted text-sm">{t("profiles.subtitle")}</p>
         </div>
         <CreateButton onCreated={(id) => setActiveId(id)} />
       </header>
@@ -70,7 +72,7 @@ export default function ProfilesPage() {
                 <p className="text-xs text-muted truncate mt-0.5">{p.description}</p>
                 <p className="text-xs text-muted mt-0.5">
                   {p.appliesTo}
-                  {fb && <span className="ml-2">→ fallback: {fb.name}</span>}
+                  {fb && <span className="ml-2">{t("profiles.fallbackInList", { name: fb.name })}</span>}
                 </p>
               </button>
             );
@@ -81,7 +83,7 @@ export default function ProfilesPage() {
           {active ? (
             <ProfileEditor key={active._id} profile={active} allProfiles={profiles} />
           ) : (
-            <p className="text-muted">Sélectionne un profil.</p>
+            <p className="text-muted">{t("profiles.selectProfile")}</p>
           )}
         </section>
       </div>
@@ -90,6 +92,7 @@ export default function ProfilesPage() {
 }
 
 function CreateButton({ onCreated }: { onCreated: (id: string) => void }) {
+  const t = useT();
   const qc = useQueryClient();
   const create = useMutation({
     mutationFn: async () =>
@@ -108,12 +111,13 @@ function CreateButton({ onCreated }: { onCreated: (id: string) => void }) {
       onClick={() => create.mutate()}
       className="flex items-center gap-1 bg-accent text-white px-3 py-2 rounded-md text-sm font-medium hover:bg-accent/90"
     >
-      <Plus className="w-4 h-4" /> New profile
+      <Plus className="w-4 h-4" /> {t("profiles.newProfile")}
     </button>
   );
 }
 
 function ProfileEditor({ profile, allProfiles }: { profile: Profile; allProfiles: Profile[] }) {
+  const t = useT();
   const qc = useQueryClient();
   const [draft, setDraft] = useState<Profile>(profile);
   const [advanced, setAdvanced] = useState(false);
@@ -182,16 +186,18 @@ function ProfileEditor({ profile, allProfiles }: { profile: Profile; allProfiles
           <button
             disabled={profile.isDefault}
             onClick={() => setDefault.mutate()}
-            title={profile.isDefault ? "Already default" : "Set as default"}
+            title={profile.isDefault ? t("profiles.alreadyDefault") : t("profiles.setDefault")}
             className="p-2 rounded hover:bg-amber-500/15 disabled:opacity-30"
           >
             <Star className={`w-4 h-4 ${profile.isDefault ? "fill-amber-400 text-amber-400" : "text-muted"}`} />
           </button>
           <button
             disabled={profile.isDefault}
-            onClick={() => confirm(`Delete "${profile.name}"?`) && remove.mutate()}
+            onClick={() =>
+              confirm(t("profiles.deleteConfirm", { name: profile.name })) && remove.mutate()
+            }
             className="p-2 rounded hover:bg-rose-500/15 text-rose-400 disabled:opacity-30"
-            title={profile.isDefault ? "Cannot delete default profile" : "Delete"}
+            title={profile.isDefault ? t("profiles.cannotDeleteDefault") : t("profiles.delete")}
           >
             <Trash2 className="w-4 h-4" />
           </button>
@@ -202,29 +208,29 @@ function ProfileEditor({ profile, allProfiles }: { profile: Profile; allProfiles
         value={draft.description ?? ""}
         onChange={(e) => update({ description: e.target.value })}
         rows={2}
-        placeholder="Brief description"
+        placeholder={t("profiles.description")}
         className="w-full bg-bg border border-border rounded-md px-3 py-2 text-sm"
       />
 
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Applies to">
+        <Field label={t("profiles.appliesTo")}>
           <select
             value={draft.appliesTo}
             onChange={(e) => update({ appliesTo: e.target.value as any })}
             className="w-full bg-bg border border-border rounded-md px-3 py-2 text-sm"
           >
-            <option value="both">Both</option>
-            <option value="movie">Movies only</option>
-            <option value="tv">TV only</option>
+            <option value="both">{t("profiles.appliesToBoth")}</option>
+            <option value="movie">{t("profiles.appliesToMovies")}</option>
+            <option value="tv">{t("profiles.appliesToTv")}</option>
           </select>
         </Field>
-        <Field label="Fallback profile (used if no release passes)">
+        <Field label={t("profiles.fallback")}>
           <select
             value={draft.fallbackProfileId ?? ""}
             onChange={(e) => update({ fallbackProfileId: e.target.value || null })}
             className="w-full bg-bg border border-border rounded-md px-3 py-2 text-sm"
           >
-            <option value="">— none —</option>
+            <option value="">{t("profiles.fallbackNone")}</option>
             {allProfiles
               .filter((p) => p._id !== draft._id)
               .map((p) => (
@@ -283,19 +289,19 @@ function ProfileEditor({ profile, allProfiles }: { profile: Profile; allProfiles
         className="flex items-center gap-1 text-sm text-muted hover:text-white"
       >
         {advanced ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-        Advanced (scoring weights, group tiers)
+        {t("profiles.advancedToggle")}
       </button>
 
       {advanced && <AdvancedEditor draft={draft} update={update} />}
 
       <div className="flex items-center justify-end gap-3 pt-2 border-t border-border">
-        {dirty && <span className="text-xs text-amber-400">Unsaved changes</span>}
+        {dirty && <span className="text-xs text-amber-400">{t("profiles.unsaved")}</span>}
         <button
           onClick={() => save.mutate()}
           disabled={!dirty || save.isPending}
           className="flex items-center gap-1 bg-accent text-white px-4 py-2 rounded-md font-medium disabled:opacity-30"
         >
-          <Save className="w-4 h-4" /> {save.isPending ? "Saving..." : "Save"}
+          <Save className="w-4 h-4" /> {save.isPending ? t("profiles.saving") : t("profiles.save")}
         </button>
       </div>
     </div>

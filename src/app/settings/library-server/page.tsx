@@ -4,12 +4,14 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Section, Field } from "@/components/SettingsForm";
 import { StatusDot, type ConnStatus, relativeTime } from "@/components/StatusDot";
 import { TestSaveButtons, type TestResult } from "@/components/TestSaveButtons";
+import { useT } from "@/lib/i18n/I18nProvider";
 
 type Settings = {
   jellyfin?: { url?: string; apiKey?: string; autoRefresh?: boolean };
 };
 
 export default function LibraryServerPage() {
+  const t = useT();
   const qc = useQueryClient();
   const { data } = useQuery<{ settings: Settings | null; effective?: Settings }>({
     queryKey: ["settings"],
@@ -52,7 +54,11 @@ export default function LibraryServerPage() {
   const test = async (): Promise<TestResult> => {
     const cfg = form.jellyfin ?? {};
     if (!cfg.url || !cfg.apiKey)
-      return { ok: false, title: "Missing fields", detail: "URL and API key are required." };
+      return {
+        ok: false,
+        title: t("test.missingFields"),
+        detail: t("test.missingFieldsDetailJellyfin"),
+      };
     const r = await fetch("/api/test/jellyfin", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -65,23 +71,21 @@ export default function LibraryServerPage() {
     <div className="space-y-6 max-w-3xl">
       <header className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold">Library server</h1>
-          <p className="text-muted text-sm mt-1">
-            Jellyfin scanne les fichiers téléchargés et les expose à tes clients.
-          </p>
+          <h1 className="text-2xl font-semibold">{t("libraryServer.title")}</h1>
+          <p className="text-muted text-sm mt-1">{t("libraryServer.description")}</p>
         </div>
         <StatusDot status={status} hint={hint} />
       </header>
 
-      <Section title="Jellyfin">
+      <Section title={t("libraryServer.sectionTitle")}>
         <Field
-          label="URL"
+          label={t("libraryServer.url")}
           value={form.jellyfin?.url}
           onChange={(v) => set({ url: v })}
           placeholder="http://82.66.229.27:8096"
         />
         <Field
-          label="API key"
+          label={t("libraryServer.apiKey")}
           type="password"
           value={form.jellyfin?.apiKey}
           onChange={(v) => set({ apiKey: v })}
@@ -93,7 +97,7 @@ export default function LibraryServerPage() {
             onChange={(e) => set({ autoRefresh: e.target.checked })}
             className="accent-accent"
           />
-          Auto-refresh la library quand un download finit
+          {t("libraryServer.autoRefreshLabel")}
         </label>
       </Section>
 
@@ -105,7 +109,7 @@ export default function LibraryServerPage() {
         }}
         onStatus={(s) => {
           setStatus(s);
-          if (s === "connected" || s === "error") setHint("just now");
+          if (s === "connected" || s === "error") setHint(t("common.justNow"));
         }}
       />
     </div>

@@ -1,17 +1,18 @@
 "use client";
 import type { ReactNode } from "react";
+import { useT } from "@/lib/i18n/I18nProvider";
 
 export type ConnStatus = "unknown" | "testing" | "connected" | "error" | "stale";
 
 const cfg: Record<
   ConnStatus,
-  { dot: string; label: string; ping: boolean; text: string }
+  { dot: string; labelKey: string; ping: boolean; text: string }
 > = {
-  unknown:   { dot: "bg-zinc-400",   label: "Not tested",  ping: false, text: "text-muted" },
-  testing:   { dot: "bg-blue-500 animate-pulse", label: "Testing…", ping: false, text: "text-blue-400" },
-  connected: { dot: "bg-emerald-500", label: "Connected",  ping: true,  text: "text-emerald-400" },
-  error:     { dot: "bg-rose-500",   label: "Error",       ping: false, text: "text-rose-400" },
-  stale:     { dot: "bg-amber-500",  label: "Stale",       ping: false, text: "text-amber-400" },
+  unknown:   { dot: "bg-zinc-400",                       labelKey: "status.notTested", ping: false, text: "text-muted" },
+  testing:   { dot: "bg-blue-500 animate-pulse",         labelKey: "status.testing",   ping: false, text: "text-blue-400" },
+  connected: { dot: "bg-emerald-500",                    labelKey: "status.connected", ping: true,  text: "text-emerald-400" },
+  error:     { dot: "bg-rose-500",                       labelKey: "status.error",     ping: false, text: "text-rose-400" },
+  stale:     { dot: "bg-amber-500",                      labelKey: "status.stale",     ping: false, text: "text-amber-400" },
 };
 
 export function StatusDot({
@@ -20,11 +21,12 @@ export function StatusDot({
   hint,
 }: {
   status: ConnStatus;
-  /** Override the default label ("Connected", "Error", …). */
+  /** Override the default localized label. */
   label?: string;
   /** Optional secondary text — typically a relative timestamp ("2m ago"). */
   hint?: ReactNode;
 }) {
+  const t = useT();
   const c = cfg[status];
   return (
     <span className={`inline-flex items-center gap-2 text-xs font-medium ${c.text}`}>
@@ -34,7 +36,7 @@ export function StatusDot({
         )}
         <span className={`relative inline-flex h-2 w-2 rounded-full ${c.dot}`} />
       </span>
-      {label ?? c.label}
+      {label ?? t(c.labelKey)}
       {hint && <span className="text-muted/70 font-normal">· {hint}</span>}
     </span>
   );

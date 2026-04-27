@@ -4,6 +4,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { MediaCard } from "@/components/MediaCard";
 import { SearchModal } from "@/components/SearchModal";
 import { Link2, Search, Trash2, Zap } from "lucide-react";
+import Link from "next/link";
+import { useT } from "@/lib/i18n/I18nProvider";
 
 type Item = {
   _id: string;
@@ -17,6 +19,7 @@ type Item = {
 };
 
 export default function LibraryPage() {
+  const t = useT();
   const qc = useQueryClient();
   const [explainItem, setExplainItem] = useState<Item | null>(null);
   const { data } = useQuery<{ items: Item[] }>({
@@ -61,13 +64,17 @@ export default function LibraryPage() {
   return (
     <div className="space-y-6">
       <header>
-        <h1 className="text-2xl font-semibold">Library</h1>
-        <p className="text-muted text-sm">{items.length} items · monitored automatically.</p>
+        <h1 className="text-2xl font-semibold">{t("library.title")}</h1>
+        <p className="text-muted text-sm">{t("library.countMonitored", { count: items.length })}</p>
       </header>
 
       {items.length === 0 ? (
         <div className="bg-surface border border-border rounded-lg p-10 text-center text-muted">
-          Empty. Use <span className="text-accent">Search</span> to add something.
+          {t("library.emptyPre")}
+          <Link className="text-accent" href="/search">
+            {t("library.emptyAction")}
+          </Link>
+          {t("library.emptyPost")}
         </div>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
@@ -82,7 +89,7 @@ export default function LibraryPage() {
               rightSlot={
                 <div className="flex gap-1">
                   <button
-                    title="Search & explain (see all releases, why one was picked)"
+                    title={t("library.searchExplain")}
                     onClick={(e) => {
                       e.stopPropagation();
                       setExplainItem(m);
@@ -92,7 +99,7 @@ export default function LibraryPage() {
                     <Search className="w-4 h-4" />
                   </button>
                   <button
-                    title="Auto-grab via profile"
+                    title={t("library.autoGrabTitle")}
                     onClick={(e) => {
                       e.stopPropagation();
                       grab.mutate(m._id);
@@ -102,10 +109,10 @@ export default function LibraryPage() {
                     <Zap className="w-4 h-4" />
                   </button>
                   <button
-                    title="Paste magnet link"
+                    title={t("library.pasteMagnet")}
                     onClick={(e) => {
                       e.stopPropagation();
-                      const magnet = prompt(`Paste a magnet link for "${m.title}"`);
+                      const magnet = prompt(t("library.pasteMagnetPrompt", { title: m.title }));
                       if (magnet?.trim()) grabMagnet.mutate({ mediaId: m._id, magnet: magnet.trim() });
                     }}
                     className="p-1 rounded hover:bg-accent/15 text-accent"
@@ -113,10 +120,11 @@ export default function LibraryPage() {
                     <Link2 className="w-4 h-4" />
                   </button>
                   <button
-                    title="Remove"
+                    title={t("library.remove")}
                     onClick={(e) => {
                       e.stopPropagation();
-                      if (confirm(`Remove ${m.title}?`)) remove.mutate(m._id);
+                      if (confirm(t("library.removeConfirm", { title: m.title })))
+                        remove.mutate(m._id);
                     }}
                     className="p-1 rounded hover:bg-rose-500/15 text-rose-400"
                   >

@@ -2,12 +2,14 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { SettingsHeader, Section, Field, SaveButton } from "@/components/SettingsForm";
+import { useT } from "@/lib/i18n/I18nProvider";
 
 type Settings = {
   paths?: { movies?: string; tv?: string; downloads?: string };
 };
 
 export default function PathsPage() {
+  const t = useT();
   const qc = useQueryClient();
   const { data } = useQuery<{ settings: Settings | null }>({
     queryKey: ["settings"],
@@ -33,23 +35,30 @@ export default function PathsPage() {
 
   return (
     <div className="space-y-6 max-w-3xl">
-      <SettingsHeader
-        title="Paths"
-        description="Laisse vide pour utiliser le save path par défaut de qBittorrent (recommandé). Renseigne uniquement si tu veux que substitutarr force un dossier différent."
-      />
+      <SettingsHeader title={t("paths.title")} description={t("paths.description")} />
 
       <Section>
-        <Field label="Movies" value={form.paths?.movies} onChange={(v) => set({ movies: v })} placeholder="(default qBit)" />
-        <Field label="TV" value={form.paths?.tv} onChange={(v) => set({ tv: v })} placeholder="(default qBit)" />
         <Field
-          label="Downloads (transient)"
+          label={t("paths.movies")}
+          value={form.paths?.movies}
+          onChange={(v) => set({ movies: v })}
+          placeholder={t("paths.placeholder")}
+        />
+        <Field
+          label={t("paths.tv")}
+          value={form.paths?.tv}
+          onChange={(v) => set({ tv: v })}
+          placeholder={t("paths.placeholder")}
+        />
+        <Field
+          label={t("paths.downloads")}
           value={form.paths?.downloads}
           onChange={(v) => set({ downloads: v })}
-          placeholder="(default qBit)"
+          placeholder={t("paths.placeholder")}
         />
       </Section>
 
-      <SaveButton pending={save.isPending} onClick={() => save.mutate(form)} />
+      <SaveButton pending={save.isPending} onClick={() => save.mutate(form)} label={t("common.save")} />
     </div>
   );
 }

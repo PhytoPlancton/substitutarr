@@ -4,12 +4,14 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Section, Field } from "@/components/SettingsForm";
 import { StatusDot, type ConnStatus, relativeTime } from "@/components/StatusDot";
 import { TestSaveButtons, type TestResult } from "@/components/TestSaveButtons";
+import { useT } from "@/lib/i18n/I18nProvider";
 
 type Settings = {
   qbittorrent?: { url?: string; user?: string; password?: string; category?: string };
 };
 
 export default function DownloadClientPage() {
+  const t = useT();
   const qc = useQueryClient();
   const { data } = useQuery<{ settings: Settings | null; effective?: Settings }>({
     queryKey: ["settings"],
@@ -56,8 +58,8 @@ export default function DownloadClientPage() {
     if (!cfg.url || !cfg.user || !cfg.password) {
       return {
         ok: false,
-        title: "Missing fields",
-        detail: "URL, user and password are required.",
+        title: t("test.missingFields"),
+        detail: t("test.missingFieldsDetail"),
       };
     }
     const r = await fetch("/api/test/qbit", {
@@ -72,31 +74,32 @@ export default function DownloadClientPage() {
     <div className="space-y-6 max-w-3xl">
       <header className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold">Download client</h1>
-          <p className="text-muted text-sm mt-1">
-            qBittorrent reçoit les torrents qu'on grab. Substitutarr ne touche pas au save path —
-            il garde celui que qBit a configuré.
-          </p>
+          <h1 className="text-2xl font-semibold">{t("downloadClient.title")}</h1>
+          <p className="text-muted text-sm mt-1">{t("downloadClient.description")}</p>
         </div>
         <StatusDot status={status} hint={hint} />
       </header>
 
-      <Section title="qBittorrent">
+      <Section title={t("downloadClient.sectionTitle")}>
         <Field
-          label="URL"
+          label={t("downloadClient.url")}
           value={form.qbittorrent?.url}
           onChange={(v) => set({ url: v })}
           placeholder="http://82.66.229.27:8080"
         />
         <Field
-          label="Category (optionnelle)"
+          label={t("downloadClient.category")}
           value={form.qbittorrent?.category}
           onChange={(v) => set({ category: v })}
           placeholder="substitutarr"
         />
-        <Field label="User" value={form.qbittorrent?.user} onChange={(v) => set({ user: v })} />
         <Field
-          label="Password"
+          label={t("downloadClient.user")}
+          value={form.qbittorrent?.user}
+          onChange={(v) => set({ user: v })}
+        />
+        <Field
+          label={t("downloadClient.password")}
           type="password"
           value={form.qbittorrent?.password}
           onChange={(v) => set({ password: v })}
@@ -111,7 +114,7 @@ export default function DownloadClientPage() {
         }}
         onStatus={(s) => {
           setStatus(s);
-          if (s === "connected" || s === "error") setHint("just now");
+          if (s === "connected" || s === "error") setHint(t("common.justNow"));
         }}
       />
     </div>
