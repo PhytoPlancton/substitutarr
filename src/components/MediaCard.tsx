@@ -15,20 +15,11 @@ type Props = {
   rightSlot?: React.ReactNode;
 };
 
-const STATUS_BORDER: Record<string, string> = {
-  wanted: "border-l-amber-500/60",
-  downloading: "border-l-blue-500/60",
-  downloaded: "border-l-emerald-500/60",
-  missing: "border-l-rose-500/60",
-  paused: "border-l-zinc-500/40",
-};
-
 export function MediaCard({ poster, title, year, type, status, progress, onClick, rightSlot }: Props) {
-  const borderClass = status ? STATUS_BORDER[status] ?? "" : "";
   return (
     <div
       onClick={onClick}
-      className={`bg-surface border border-border ${borderClass ? `border-l-2 ${borderClass}` : ""} rounded-lg ${onClick ? "cursor-pointer" : ""}`}
+      className={`bg-surface border border-border rounded-lg ${onClick ? "cursor-pointer" : ""}`}
     >
       <div className="relative aspect-[2/3] bg-black/30 rounded-t-lg overflow-hidden">
         {poster ? (

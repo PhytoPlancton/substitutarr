@@ -67,8 +67,10 @@ export default function SearchPage() {
   const inLibrary = (h: Hit): LibraryItem | undefined =>
     lib?.items?.find((x) => x.type === h.type && Number(x.tmdbId) === Number(h.tmdbId));
 
+  const [tvHit, setTvHit] = useState<Hit | null>(null);
+
   const add = useMutation({
-    mutationFn: async (h: Hit) => {
+    mutationFn: async (h: Hit & { monitoringStrategy?: string }) => {
       const r = await fetch("/api/library", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -77,6 +79,7 @@ export default function SearchPage() {
           tmdbId: h.tmdbId,
           autoGrab,
           profileId: profileId ?? undefined,
+          monitoringStrategy: h.monitoringStrategy,
         }),
       });
       return r.json();
@@ -207,7 +210,8 @@ export default function SearchPage() {
                     disabled={adding}
                     onClick={(e) => {
                       e.stopPropagation();
-                      add.mutate(h);
+                      if (h.type === "tv") setTvHit(h);
+                      else add.mutate(h);
                     }}
                     className="p-1 rounded hover:bg-accent/15 text-accent disabled:opacity-50"
                   >
@@ -222,6 +226,83 @@ export default function SearchPage() {
             />
           );
         })}
+      </div>
+
+      {tvHit && (
+        <TvMonitoringSheet
+          hit={tvHit}
+          onCancel={() => setTvHit(null)}
+          onConfirm={(strategy) => {
+            add.mutate({ ...tvHit, monitoringStrategy: strategy });
+            setTvHit(null);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function TvMonitoringSheet({
+  hit,
+  onCancel,
+  onConfirm,
+}: {
+  hit: Hit;
+  onCancel: () => void;
+  onConfirm: (strategy: string) => void;
+}) {
+  const [strategy, setStrategy] = useState("all");
+  const options: { value: string; label: string; hint: string }[] = [
+    { value: "all", label: "All seasons + future", hint: "Monitor and grab everything that exists, plus upcoming episodes." },
+    { value: "future", label: "Future episodes only", hint: "Don't grab existing episodes. Wait for new ones." },
+    { value: "missing", label: "Missing only", hint: "Monitor everything aired without a file. Skip unaired." },
+    { value: "lastSeason", label: "Latest season only", hint: "Monitor only the most recent season + future." },
+    { value: "firstSeason", label: "First season only", hint: "Monitor S01. Useful for trying out a series." },
+    { value: "pilot", label: "Pilot only", hint: "S01E01. Test the show first." },
+    { value: "none", label: "None (metadata only)", hint: "Add to library but don't monitor anything. Manual ops only." },
+  ];
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="w-full max-w-md bg-surface border border-border rounded-lg shadow-2xl p-5">
+        <h2 className="text-lg font-semibold">Add {hit.title}</h2>
+        <p className="text-xs text-muted mt-1">Pick a monitoring strategy. You can change it per-season later.</p>
+        <div className="mt-4 space-y-1">
+          {options.map((o) => (
+            <label
+              key={o.value}
+              className={`flex items-start gap-3 p-2.5 rounded-md cursor-pointer border ${
+                strategy === o.value ? "border-accent bg-accent/5" : "border-transparent hover:bg-white/5"
+              }`}
+            >
+              <input
+                type="radio"
+                name="strategy"
+                checked={strategy === o.value}
+                onChange={() => setStrategy(o.value)}
+                className="mt-1 accent-accent"
+              />
+              <div>
+                <div className="text-sm font-medium">{o.label}</div>
+                <div className="text-xs text-muted">{o.hint}</div>
+              </div>
+            </label>
+          ))}
+        </div>
+        <div className="flex justify-end gap-2 mt-5">
+          <button
+            onClick={onCancel}
+            className="px-3 py-1.5 text-sm rounded-md border border-border hover:bg-white/5"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => onConfirm(strategy)}
+            className="px-3 py-1.5 text-sm rounded-md bg-accent text-white font-medium hover:bg-accent/90"
+          >
+            Add series
+          </button>
+        </div>
       </div>
     </div>
   );

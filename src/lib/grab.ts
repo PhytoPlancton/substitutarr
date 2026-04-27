@@ -70,10 +70,47 @@ async function pushToQbit(
     episode,
   });
 
-  await Media.updateOne(
-    { _id: media._id },
-    { $set: { status: "downloading", lastSearchedAt: new Date() } },
-  );
+  if (media.type === "tv" && (season != null || episode != null)) {
+    // Mark per-episode (or all matching season episodes when no episode passed) as snatched.
+    const grabInfo = {
+      downloadId: release.infoHash?.toLowerCase(),
+      indexer: release.indexer,
+      releaseTitle: release.title,
+      snatchedAt: new Date(),
+    };
+    if (episode != null && season != null) {
+      await Media.updateOne(
+        { _id: media._id, "seasons.number": season },
+        {
+          $set: {
+            "seasons.$[s].episodes.$[e].status": "snatched",
+            "seasons.$[s].episodes.$[e].grab": grabInfo,
+            lastSearchedAt: new Date(),
+          },
+        },
+        { arrayFilters: [{ "s.number": season }, { "e.number": episode }] },
+      );
+    } else if (season != null) {
+      // Season pack — apply to every episode in the season that doesn't already have a file.
+      await Media.updateOne(
+        { _id: media._id, "seasons.number": season },
+        {
+          $set: {
+            "seasons.$[s].episodes.$[e].status": "snatched",
+            "seasons.$[s].episodes.$[e].grab": grabInfo,
+            lastSearchedAt: new Date(),
+          },
+        },
+        { arrayFilters: [{ "s.number": season }, { "e.status": { $in: ["wanted", "missing", "unaired"] } }] },
+      );
+    }
+  } else {
+    // Movie — keep the existing global status flow.
+    await Media.updateOne(
+      { _id: media._id },
+      { $set: { status: "downloading", lastSearchedAt: new Date() } },
+    );
+  }
 }
 
 export async function grabBest(opts: {

@@ -150,17 +150,31 @@ export async function getDetails(type: "movie" | "tv", id: number) {
     backdrop: backdrop(data.backdrop_path),
     rating: data.vote_average,
     runtime: data.runtime,
+    tmdbStatus: data.status?.toLowerCase().replace(/ /g, "_"),
+    nextAirDate: data.next_episode_to_air?.air_date,
     seasons:
       type === "tv"
-        ? (data.seasons || [])
-            .filter((s: any) => s.season_number > 0)
-            .map((s: any) => ({
-              number: s.season_number,
-              episodes: Array.from({ length: s.episode_count }, (_, i) => ({
-                number: i + 1,
-                airDate: s.air_date,
-              })),
-            }))
+        ? await Promise.all(
+            (data.seasons || [])
+              .filter((s: any) => s.season_number !== null && s.season_number !== undefined)
+              .map(async (s: any) => {
+                const detail = await tmdb<any>(`/tv/${id}/season/${s.season_number}`).catch(() => null);
+                return {
+                  number: s.season_number,
+                  name: s.name,
+                  posterUrl: poster(s.poster_path),
+                  airDate: s.air_date,
+                  episodeCount: s.episode_count,
+                  episodes: (detail?.episodes ?? []).map((e: any) => ({
+                    number: e.episode_number,
+                    name: e.name,
+                    overview: e.overview,
+                    airDate: e.air_date,
+                    runtime: e.runtime,
+                  })),
+                };
+              }),
+          )
         : undefined,
   };
 }

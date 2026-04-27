@@ -5,17 +5,32 @@ import { connectMongo } from "@/lib/mongo";
 import { Media } from "@/models/Media";
 import { getDetails } from "@/lib/tmdb";
 import { grabBest } from "@/lib/grab";
+import { applyMonitoringStrategy } from "@/lib/tv-monitoring";
 
 export const runtime = "nodejs";
+
+const MonitoringStrategy = z.enum([
+  "all",
+  "future",
+  "missing",
+  "existing",
+  "firstSeason",
+  "lastSeason",
+  "pilot",
+  "recent",
+  "none",
+]);
 
 const AddSchema = z.object({
   type: z.enum(["movie", "tv"]),
   tmdbId: z.number().int().positive(),
   qualityProfile: z.string().optional(),
-  /** When true (default), trigger an auto-grab right after adding. */
+  /** When true (default), trigger an auto-grab right after adding. Movies only. */
   autoGrab: z.boolean().default(true),
   /** Optional profile to use for the auto-grab. Falls back to user default. */
   profileId: z.string().optional(),
+  /** TV-only: how to monitor existing & future episodes. Default "all". */
+  monitoringStrategy: MonitoringStrategy.optional(),
 });
 
 export async function GET() {
@@ -36,33 +51,71 @@ export async function POST(req: Request) {
   const details = await getDetails(parsed.data.type, parsed.data.tmdbId);
   await connectMongo();
 
+  const isTv = parsed.data.type === "tv";
+  const strategy = parsed.data.monitoringStrategy ?? "all";
+
+  // Don't clobber a user's existing per-episode monitoring on update.
+  const existing = await Media.findOne({
+    userId,
+    type: parsed.data.type,
+    tmdbId: parsed.data.tmdbId,
+  }).lean<any>();
+
+  const seasonsForInsert =
+    isTv && details.seasons
+      ? applyMonitoringStrategy(details.seasons, strategy)
+      : details.seasons;
+
+  const $set: Record<string, any> = {
+    title: details.title,
+    originalTitle: details.originalTitle,
+    originalLanguage: details.originalLanguage,
+    altTitles: details.altTitles,
+    year: details.year ? Number(details.year) : undefined,
+    yearMin: details.yearMin,
+    yearMax: details.yearMax,
+    overview: details.overview,
+    poster: details.poster,
+    backdrop: details.backdrop,
+    qualityProfile: parsed.data.qualityProfile ?? "1080p",
+    lastTmdbRefreshAt: new Date(),
+  };
+  if (isTv) {
+    $set.tmdbStatus = (details as any).tmdbStatus;
+    $set.nextAirDate = (details as any).nextAirDate;
+  }
+
+  const $setOnInsert: Record<string, any> = {
+    userId,
+    type: parsed.data.type,
+    tmdbId: parsed.data.tmdbId,
+  };
+  if (isTv) {
+    $setOnInsert.monitoringStrategy = strategy;
+    $setOnInsert.seasons = seasonsForInsert ?? [];
+  } else {
+    $setOnInsert.seasons = details.seasons ?? [];
+  }
+
   const doc = await Media.findOneAndUpdate(
     { userId, type: parsed.data.type, tmdbId: parsed.data.tmdbId },
-    {
-      $setOnInsert: {
-        userId,
-        type: parsed.data.type,
-        tmdbId: parsed.data.tmdbId,
-      },
-      $set: {
-        title: details.title,
-        originalTitle: details.originalTitle,
-        originalLanguage: details.originalLanguage,
-        altTitles: details.altTitles,
-        year: details.year ? Number(details.year) : undefined,
-        yearMin: details.yearMin,
-        yearMax: details.yearMax,
-        overview: details.overview,
-        poster: details.poster,
-        backdrop: details.backdrop,
-        seasons: details.seasons,
-        qualityProfile: parsed.data.qualityProfile ?? "1080p",
-      },
-    },
+    { $setOnInsert, $set },
     { upsert: true, new: true },
   );
 
-  if (!parsed.data.autoGrab) {
+  // For new TV adds, the seasons have just been written by $setOnInsert.
+  // For existing, leave the user's per-episode monitoring as-is.
+  // (Future: a separate /refresh endpoint will diff TMDB and add missing
+  //  seasons inheriting the strategy.)
+  if (isTv && !existing) {
+    /* fresh add — nothing else to do */
+  }
+
+  if (!isTv && !parsed.data.autoGrab) {
+    return NextResponse.json({ media: doc, grabbed: false });
+  }
+  if (isTv) {
+    // TV grabs are per-season / per-episode and triggered from the detail page.
     return NextResponse.json({ media: doc, grabbed: false });
   }
 
