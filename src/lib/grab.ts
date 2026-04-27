@@ -3,6 +3,7 @@ import { Media } from "@/models/Media";
 import { Download } from "@/models/Download";
 import { UserSettings } from "@/models/UserSettings";
 import { Profile } from "@/models/Profile";
+import { Activity } from "@/models/Activity";
 import { searchAll } from "./indexers/registry";
 import { getUserQbit } from "./qbittorrent";
 import { ensureProfilesForUser } from "./profile-bootstrap";
@@ -69,6 +70,15 @@ async function pushToQbit(
     season,
     episode,
   });
+  void Activity.create({
+    userId,
+    mediaId: media._id,
+    kind: "grabbed",
+    title: release.title,
+    season,
+    episode,
+    indexer: release.indexer,
+  }).catch(() => {});
 
   if (media.type === "tv" && (season != null || episode != null)) {
     // Mark per-episode (or all matching season episodes when no episode passed) as snatched.

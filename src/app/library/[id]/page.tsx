@@ -8,22 +8,17 @@ import {
   Search,
   Zap,
   Loader2,
-  ChevronDown,
-  ChevronUp,
+  Trash2,
+  RefreshCcw,
+  Link2,
+  ExternalLink,
+  Play,
   Check,
   AlertCircle,
-  Clock,
-  Trash2,
 } from "lucide-react";
 import { SearchModal } from "@/components/SearchModal";
 
-type Episode = {
-  number: number;
-  name?: string;
-  airDate?: string;
-  status: string;
-  monitored?: boolean;
-};
+type Episode = { number: number; status: string };
 type Season = {
   number: number;
   name?: string;
@@ -40,28 +35,76 @@ type Media = {
   overview?: string;
   poster?: string | null;
   backdrop?: string | null;
+  status?: string;
   tmdbStatus?: string;
   nextAirDate?: string;
   seasons?: Season[];
 };
+type Cast = { id: number; name: string; character: string; profile?: string | null };
+type Extras = {
+  cast: Cast[];
+  director?: string;
+  writers: string[];
+  trailerKey?: string;
+  externalIds: { imdbId?: string; tvdbId?: number };
+  similar: { tmdbId: number; type: "movie" | "tv"; title: string; year?: number; poster?: string | null }[];
+  collection?: {
+    id: number;
+    name: string;
+    backdrop?: string | null;
+    movies: { tmdbId: number; title: string; year?: number; poster?: string | null }[];
+  };
+};
+type Activity = {
+  _id: string;
+  kind: string;
+  title?: string;
+  detail?: string;
+  season?: number;
+  episode?: number;
+  indexer?: string;
+  at: string;
+};
+type Download = { mediaId: string; progress?: number; state?: string; title?: string; quality?: string; sizeBytes?: number };
 
 export default function MediaDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const qc = useQueryClient();
-  const [explainCtx, setExplainCtx] = useState<{ season?: number; episode?: number } | null>(null);
-  const [openSeason, setOpenSeason] = useState<number | null>(null);
+  const [explainCtx, setExplainCtx] = useState<{ open: boolean; season?: number; episode?: number }>({ open: false });
+  const [trailerOpen, setTrailerOpen] = useState(false);
 
   const { data, isLoading } = useQuery<{ item: Media }>({
     queryKey: ["library", id],
     queryFn: async () => (await fetch(`/api/library/${id}`)).json(),
     refetchInterval: 5000,
   });
+  const { data: extrasData } = useQuery<{ extras?: Extras; activity?: Activity[] }>({
+    queryKey: ["library-extras", id],
+    queryFn: async () => (await fetch(`/api/library/${id}/extras`)).json(),
+  });
+  const { data: dlData } = useQuery<{ items: Download[] }>({
+    queryKey: ["downloads"],
+    queryFn: async () => (await fetch("/api/downloads")).json(),
+    refetchInterval: 5000,
+  });
+
+  const grab = useMutation({
+    mutationFn: async () => fetch(`/api/grab`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mediaId: id }),
+    }).then((r) => r.json()),
+    onSuccess: (r) => {
+      if (!r.ok) alert(`Grab failed:\n${r.error ?? "unknown"}`);
+      qc.invalidateQueries({ queryKey: ["library", id] });
+      qc.invalidateQueries({ queryKey: ["downloads"] });
+    },
+  });
 
   const grabSeason = useMutation({
     mutationFn: async ({ s, ep }: { s: number; ep?: number }) => {
       const qs = ep != null ? `?episode=${ep}` : "";
-      const r = await fetch(`/api/library/${id}/season/${s}/grab${qs}`, { method: "POST" });
-      return r.json();
+      return fetch(`/api/library/${id}/season/${s}/grab${qs}`, { method: "POST" }).then((r) => r.json());
     },
     onSuccess: (r) => {
       if (!r.ok) alert(`Grab failed:\n${r.error ?? "unknown"}`);
@@ -70,47 +113,21 @@ export default function MediaDetailPage({ params }: { params: Promise<{ id: stri
     },
   });
 
-  const toggleSeasonMonitor = useMutation({
-    mutationFn: async ({ s, monitored }: { s: number; monitored: boolean }) => {
-      await fetch(`/api/library/${id}/season/${s}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ monitored }),
-      });
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["library", id] }),
-  });
-
   const remove = useMutation({
-    mutationFn: async () =>
-      fetch(`/api/library/${id}`, { method: "DELETE" }).then((r) => r.json()),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["library"] });
-      window.location.href = "/library";
-    },
+    mutationFn: async () => fetch(`/api/library/${id}`, { method: "DELETE" }).then((r) => r.json()),
+    onSuccess: () => { window.location.href = "/library"; },
   });
 
   if (isLoading || !data?.item) return <div className="text-muted">Loading…</div>;
   const m = data.item;
   const isTv = m.type === "tv";
   const seasons = (m.seasons ?? []).filter((s) => s.number > 0);
-  const specials = (m.seasons ?? []).find((s) => s.number === 0);
-
-  const totals = seasons.reduce(
-    (acc, s) => {
-      const aired = s.episodes.filter((e) => e.status !== "unaired").length;
-      const dl = s.episodes.filter((e) => e.status === "downloaded").length;
-      acc.aired += aired;
-      acc.dl += dl;
-      acc.total += s.episodes.length;
-      return acc;
-    },
-    { aired: 0, dl: 0, total: 0 },
-  );
-  const monitoredCount = seasons.filter((s) => s.monitored).length;
+  const stats = isTv ? computeTvStats(m.seasons ?? []) : null;
+  const myDownload = (dlData?.items ?? []).find((d) => d.mediaId === id);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
+      {/* Back link */}
       <div>
         <Link
           href="/library"
@@ -120,131 +137,186 @@ export default function MediaDetailPage({ params }: { params: Promise<{ id: stri
         </Link>
       </div>
 
-      <header className="relative rounded-lg overflow-hidden bg-surface border border-border">
-        {m.backdrop && (
-          <div className="absolute inset-0 -z-0">
-            <Image src={m.backdrop} alt="" fill className="object-cover opacity-25" />
-            <div className="absolute inset-0 bg-gradient-to-r from-bg via-bg/60 to-transparent" />
-          </div>
-        )}
-        <div className="relative z-10 flex gap-6 p-6">
-          {m.poster && (
-            <div className="relative aspect-[2/3] w-32 shrink-0 rounded-md overflow-hidden">
-              <Image src={m.poster} alt={m.title} fill className="object-cover" />
-            </div>
-          )}
-          <div className="min-w-0 flex-1 space-y-3">
-            <div className="flex items-start justify-between gap-3 flex-wrap">
-              <div>
-                <h1 className="text-2xl font-semibold">{m.title}</h1>
-                <p className="text-sm text-muted">
-                  {m.year ?? "—"}
-                  {isTv && m.tmdbStatus && (
-                    <>
-                      {" · "}
-                      <span className={tmdbStatusColor(m.tmdbStatus)}>
-                        {tmdbStatusLabel(m.tmdbStatus)}
-                      </span>
-                    </>
-                  )}
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => confirm(`Remove "${m.title}"?`) && remove.mutate()}
-                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded text-xs hover:bg-rose-500/15 text-rose-400 border border-border"
-                >
-                  <Trash2 className="w-3.5 h-3.5" /> Remove
-                </button>
-              </div>
-            </div>
+      <Hero
+        media={m}
+        stats={stats}
+        myDownload={myDownload}
+        extras={extrasData?.extras}
+        onGrab={() => grab.mutate()}
+        grabbing={grab.isPending}
+        onSearch={() => setExplainCtx({ open: true })}
+        onTrailer={() => setTrailerOpen(true)}
+        onRemove={() => confirm(`Remove "${m.title}"?`) && remove.mutate()}
+      />
 
-            {m.overview && <p className="text-sm text-muted/80 line-clamp-3 max-w-2xl">{m.overview}</p>}
-
-            {isTv && (
-              <div className="flex items-center gap-4 text-xs text-muted flex-wrap">
-                <span>
-                  <strong className="text-white">{totals.dl}</strong> / {totals.aired} aired episodes
-                </span>
-                <span>·</span>
-                <span>{seasons.length} seasons</span>
-                <span>·</span>
-                <span>{monitoredCount} monitored</span>
-                {m.nextAirDate && (
-                  <>
-                    <span>·</span>
-                    <span className="text-amber-400">Next: {m.nextAirDate}</span>
-                  </>
-                )}
-              </div>
-            )}
-
-            {isTv && (
-              <div className="flex items-center gap-2 pt-1">
-                <button
-                  onClick={() => setExplainCtx({})}
-                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded text-xs bg-accent/15 text-accent hover:bg-accent/25"
-                >
-                  <Search className="w-3.5 h-3.5" /> Search & explain
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      </header>
-
-      {isTv ? (
+      {/* Synopsis + external links */}
+      {(m.overview || extrasData?.extras?.externalIds || extrasData?.extras?.trailerKey) && (
         <section className="space-y-3">
-          <h2 className="text-sm uppercase tracking-wider text-muted">Seasons</h2>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-            {seasons.map((s) => (
-              <SeasonCard
-                key={s.number}
-                season={s}
-                isOpen={openSeason === s.number}
-                onToggleOpen={() =>
-                  setOpenSeason(openSeason === s.number ? null : s.number)
-                }
-                onToggleMonitor={(monitored) =>
-                  toggleSeasonMonitor.mutate({ s: s.number, monitored })
-                }
-                onGrabPack={() => grabSeason.mutate({ s: s.number })}
-                onSearch={() => setExplainCtx({ season: s.number })}
-                grabbing={grabSeason.isPending && grabSeason.variables?.s === s.number}
-              />
-            ))}
-          </div>
-
-          {openSeason !== null && (
-            <EpisodeTable
-              season={(m.seasons ?? []).find((x) => x.number === openSeason)!}
-              onGrabEpisode={(ep) => grabSeason.mutate({ s: openSeason, ep })}
-              onSearchEpisode={(ep) => setExplainCtx({ season: openSeason, episode: ep })}
-            />
-          )}
-
-          {specials && specials.episodes.length > 0 && (
-            <details className="bg-surface border border-border rounded-lg p-4">
-              <summary className="cursor-pointer text-sm text-muted">
-                Specials ({specials.episodes.length} episodes)
-              </summary>
-              <div className="mt-3">
-                <EpisodeTable
-                  season={specials}
-                  onGrabEpisode={(ep) => grabSeason.mutate({ s: 0, ep })}
-                  onSearchEpisode={(ep) => setExplainCtx({ season: 0, episode: ep })}
-                />
-              </div>
-            </details>
-          )}
-        </section>
-      ) : (
-        <section className="bg-surface border border-border rounded-lg p-6 text-sm text-muted">
-          Movie detail page coming soon. Use the Library grid actions for now.
+          {m.overview && <Synopsis text={m.overview} />}
+          <ExternalLinks
+            tmdbId={(m as any).tmdbId}
+            type={m.type}
+            imdbId={extrasData?.extras?.externalIds.imdbId}
+            trailerKey={extrasData?.extras?.trailerKey}
+            onTrailer={() => setTrailerOpen(true)}
+          />
         </section>
       )}
 
-      {explainCtx && (
+      {/* TV: Seasons rail + per-season grab/search */}
+      {isTv && seasons.length > 0 && (
+        <section className="space-y-3">
+          <h2 className="text-sm uppercase tracking-wider text-muted">Seasons</h2>
+          <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1 snap-x">
+            {seasons.map((s) => (
+              <SeasonCard
+                key={s.number}
+                mediaId={id}
+                season={s}
+                onGrabPack={() => grabSeason.mutate({ s: s.number })}
+                grabbing={grabSeason.isPending && grabSeason.variables?.s === s.number && grabSeason.variables?.ep == null}
+              />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Movie: file details */}
+      {!isTv && (
+        <section className="space-y-3">
+          <h2 className="text-sm uppercase tracking-wider text-muted">File</h2>
+          <MovieFileBlock media={m} download={myDownload} />
+        </section>
+      )}
+
+      {/* Cast (rond Apple TV style) */}
+      {extrasData?.extras?.cast && extrasData.extras.cast.length > 0 && (
+        <section className="space-y-3">
+          <h2 className="text-sm uppercase tracking-wider text-muted">Cast</h2>
+          <div className="flex gap-4 overflow-x-auto pb-2 -mx-1 px-1">
+            {extrasData.extras.cast.map((c) => (
+              <div key={c.id} className="shrink-0 text-center w-20" title={c.character}>
+                <div className="relative w-16 h-16 rounded-full overflow-hidden mx-auto bg-bg/40">
+                  {c.profile ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={c.profile} alt={c.name} className="absolute inset-0 w-full h-full object-cover" />
+                  ) : (
+                    <div className="absolute inset-0 flex items-center justify-center text-muted text-lg">{c.name[0]}</div>
+                  )}
+                </div>
+                <div className="mt-1 text-[11px] truncate">{c.name}</div>
+                <div className="text-[10px] text-muted truncate">{c.character}</div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Crew (movies — director + writers) */}
+      {!isTv && (extrasData?.extras?.director || extrasData?.extras?.writers.length) && (
+        <section className="text-xs text-muted">
+          {extrasData?.extras?.director && (
+            <span>Director: <span className="text-white">{extrasData.extras.director}</span></span>
+          )}
+          {extrasData?.extras?.writers && extrasData.extras.writers.length > 0 && (
+            <span className="ml-3">Writers: <span className="text-white">{extrasData.extras.writers.join(", ")}</span></span>
+          )}
+        </section>
+      )}
+
+      {/* Activity log */}
+      {extrasData?.activity && extrasData.activity.length > 0 && (
+        <section className="space-y-3">
+          <h2 className="text-sm uppercase tracking-wider text-muted">Activity</h2>
+          <ul className="bg-surface border border-border rounded-lg divide-y divide-border">
+            {extrasData.activity.slice(0, 8).map((a) => (
+              <li key={a._id} className="px-4 py-2 text-xs flex items-center justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <ActivityIcon kind={a.kind} />
+                    <span className="font-medium capitalize">{a.kind}</span>
+                    {a.season != null && (
+                      <span className="text-muted font-mono">
+                        S{String(a.season).padStart(2, "0")}{a.episode != null ? `E${String(a.episode).padStart(2, "0")}` : ""}
+                      </span>
+                    )}
+                    {a.indexer && <span className="text-muted">via {a.indexer}</span>}
+                  </div>
+                  {a.title && <div className="text-muted truncate mt-0.5">{a.title}</div>}
+                </div>
+                <span className="text-muted/70 shrink-0">{relTime(a.at)}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {/* Movie collection */}
+      {!isTv && extrasData?.extras?.collection && (
+        <section className="space-y-3">
+          <h2 className="text-sm uppercase tracking-wider text-muted">{extrasData.extras.collection.name}</h2>
+          <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1">
+            {extrasData.extras.collection.movies.map((mv) => (
+              <div key={mv.tmdbId} className="shrink-0 w-32">
+                <div className="relative aspect-[2/3] rounded-md overflow-hidden bg-bg/40">
+                  {mv.poster ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={mv.poster} alt={mv.title} className="absolute inset-0 w-full h-full object-cover" />
+                  ) : (
+                    <div className="absolute inset-0 flex items-center justify-center text-xs text-muted p-2 text-center">
+                      {mv.title}
+                    </div>
+                  )}
+                </div>
+                <div className="mt-1 text-[11px] truncate">{mv.title}</div>
+                <div className="text-[10px] text-muted">{mv.year}</div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Similar */}
+      {extrasData?.extras?.similar && extrasData.extras.similar.length > 0 && (
+        <section className="space-y-3">
+          <h2 className="text-sm uppercase tracking-wider text-muted">Similar</h2>
+          <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1">
+            {extrasData.extras.similar.map((sim) => (
+              <div key={sim.tmdbId} className="shrink-0 w-32">
+                <div className="relative aspect-[2/3] rounded-md overflow-hidden bg-bg/40">
+                  {sim.poster ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={sim.poster} alt={sim.title} className="absolute inset-0 w-full h-full object-cover" />
+                  ) : (
+                    <div className="absolute inset-0 flex items-center justify-center text-xs text-muted p-2 text-center">
+                      {sim.title}
+                    </div>
+                  )}
+                </div>
+                <div className="mt-1 text-[11px] truncate">{sim.title}</div>
+                <div className="text-[10px] text-muted">{sim.year}</div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {trailerOpen && extrasData?.extras?.trailerKey && (
+        <div
+          onClick={() => setTrailerOpen(false)}
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
+        >
+          <div className="w-full max-w-4xl aspect-video">
+            <iframe
+              src={`https://www.youtube.com/embed/${extrasData.extras.trailerKey}?autoplay=1`}
+              allow="autoplay; fullscreen"
+              className="w-full h-full rounded-lg"
+            />
+          </div>
+        </div>
+      )}
+
+      {explainCtx.open && (
         <SearchModal
           mediaId={id}
           mediaTitle={`${m.title}${
@@ -254,11 +326,314 @@ export default function MediaDetailPage({ params }: { params: Promise<{ id: stri
                 }`
               : ""
           }`}
-          onClose={() => setExplainCtx(null)}
+          onClose={() => setExplainCtx({ open: false })}
         />
       )}
     </div>
   );
+}
+
+function Hero({
+  media,
+  stats,
+  extras,
+  myDownload,
+  onGrab,
+  grabbing,
+  onSearch,
+  onTrailer,
+  onRemove,
+}: {
+  media: Media;
+  stats: ReturnType<typeof computeTvStats> | null;
+  extras?: Extras;
+  myDownload?: Download;
+  onGrab: () => void;
+  grabbing: boolean;
+  onSearch: () => void;
+  onTrailer: () => void;
+  onRemove: () => void;
+}) {
+  const isTv = media.type === "tv";
+  return (
+    <section className="relative rounded-lg overflow-hidden border border-border" style={{ minHeight: 320 }}>
+      {media.backdrop && (
+        <div className="absolute inset-0 -z-0">
+          <Image src={media.backdrop} alt="" fill className="object-cover scale-110" priority />
+          <div className="absolute inset-0 bg-bg/60 backdrop-blur-sm" />
+          <div className="absolute inset-0 bg-gradient-to-t from-bg via-bg/70 to-transparent" />
+        </div>
+      )}
+      <div className="relative z-10 p-6 sm:p-8 grid grid-cols-1 sm:grid-cols-[180px_1fr] gap-6">
+        {media.poster && (
+          <div className="relative aspect-[2/3] w-44 sm:w-44 rounded-md overflow-hidden ring-1 ring-white/10 shadow-2xl">
+            <Image src={media.poster} alt={media.title} fill className="object-cover" />
+          </div>
+        )}
+        <div className="flex flex-col justify-end gap-3 min-w-0">
+          <div className="flex items-center gap-2 text-xs flex-wrap">
+            {isTv && media.tmdbStatus && (
+              <span className={`inline-flex items-center gap-1 ${tmdbStatusColor(media.tmdbStatus)}`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${tmdbDotBg(media.tmdbStatus)}`} />
+                {tmdbStatusLabel(media.tmdbStatus)}
+              </span>
+            )}
+            <span className="text-muted">{media.year ?? "—"}</span>
+            {isTv && stats && (
+              <>
+                <span className="text-muted">·</span>
+                <span className="text-muted">
+                  {stats.seasonCount} season{stats.seasonCount > 1 ? "s" : ""}
+                </span>
+                <span className="text-muted">·</span>
+                <span className="text-muted">{stats.aired} aired ep</span>
+              </>
+            )}
+            {!isTv && myDownload?.quality && (
+              <>
+                <span className="text-muted">·</span>
+                <span className="text-emerald-400">✓ {myDownload.quality}</span>
+              </>
+            )}
+          </div>
+
+          <h1 className="text-3xl font-semibold tracking-tight">{media.title}</h1>
+
+          {isTv && stats && (
+            <div className="text-sm text-muted">
+              <strong className="text-white">{stats.downloaded}</strong>/{stats.aired || 0} downloaded
+              {media.nextAirDate && (
+                <span className="ml-3 text-amber-400">Next: {media.nextAirDate}</span>
+              )}
+            </div>
+          )}
+
+          <div className="flex gap-2 flex-wrap pt-2">
+            {!isTv && (
+              <button
+                onClick={onGrab}
+                disabled={grabbing || media.status === "downloaded" || media.status === "downloading"}
+                className="inline-flex items-center gap-1 px-3 py-1.5 rounded text-sm bg-accent text-white font-medium hover:bg-accent/90 disabled:opacity-50"
+              >
+                {grabbing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
+                Auto-grab
+              </button>
+            )}
+            <button
+              onClick={onSearch}
+              className="inline-flex items-center gap-1 px-3 py-1.5 rounded text-sm bg-accent/15 text-accent hover:bg-accent/25"
+            >
+              <Search className="w-4 h-4" /> Search & explain
+            </button>
+            {extras?.trailerKey && (
+              <button
+                onClick={onTrailer}
+                className="inline-flex items-center gap-1 px-3 py-1.5 rounded text-sm border border-border hover:bg-white/5"
+              >
+                <Play className="w-4 h-4" /> Trailer
+              </button>
+            )}
+            <button
+              onClick={onRemove}
+              title="Remove"
+              className="inline-flex items-center gap-1 px-3 py-1.5 rounded text-sm border border-border hover:bg-rose-500/15 text-rose-400"
+            >
+              <Trash2 className="w-4 h-4" /> Remove
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function Synopsis({ text }: { text: string }) {
+  const [open, setOpen] = useState(false);
+  const long = text.length > 280;
+  return (
+    <div className="text-sm text-muted/90">
+      <p className={open || !long ? "" : "line-clamp-3"}>{text}</p>
+      {long && (
+        <button
+          onClick={() => setOpen((v) => !v)}
+          className="text-accent text-xs mt-1 hover:underline"
+        >
+          {open ? "Show less" : "Read more"}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function ExternalLinks({
+  tmdbId,
+  type,
+  imdbId,
+  trailerKey,
+  onTrailer,
+}: {
+  tmdbId: number;
+  type: "movie" | "tv";
+  imdbId?: string;
+  trailerKey?: string;
+  onTrailer: () => void;
+}) {
+  return (
+    <div className="flex gap-2 flex-wrap text-xs">
+      <a
+        href={`https://www.themoviedb.org/${type}/${tmdbId}`}
+        target="_blank"
+        rel="noreferrer"
+        className="inline-flex items-center gap-1 px-2 py-1 rounded border border-border hover:bg-white/5"
+      >
+        TMDB <ExternalLink className="w-3 h-3" />
+      </a>
+      {imdbId && (
+        <a
+          href={`https://www.imdb.com/title/${imdbId}`}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex items-center gap-1 px-2 py-1 rounded border border-border hover:bg-white/5"
+        >
+          IMDb <ExternalLink className="w-3 h-3" />
+        </a>
+      )}
+      <a
+        href={`https://trakt.tv/search/tmdb/${tmdbId}?id_type=${type}`}
+        target="_blank"
+        rel="noreferrer"
+        className="inline-flex items-center gap-1 px-2 py-1 rounded border border-border hover:bg-white/5"
+      >
+        Trakt <ExternalLink className="w-3 h-3" />
+      </a>
+      {trailerKey && (
+        <button
+          onClick={onTrailer}
+          className="inline-flex items-center gap-1 px-2 py-1 rounded border border-border hover:bg-white/5"
+        >
+          <Play className="w-3 h-3" /> Trailer
+        </button>
+      )}
+    </div>
+  );
+}
+
+function SeasonCard({
+  mediaId,
+  season,
+  onGrabPack,
+  grabbing,
+}: {
+  mediaId: string;
+  season: Season;
+  onGrabPack: () => void;
+  grabbing: boolean;
+}) {
+  const eps = season.episodes;
+  const total = eps.length;
+  const dl = eps.filter((e) => e.status === "downloaded").length;
+  const aired = eps.filter((e) => e.status !== "unaired").length;
+  const pct = total ? Math.round((dl / total) * 100) : 0;
+
+  let ringColor = "ring-zinc-800";
+  if (!season.monitored) ringColor = "ring-zinc-800 opacity-60";
+  else if (aired === 0) ringColor = "ring-zinc-700";
+  else if (dl === aired) ringColor = "ring-emerald-500/40";
+  else if (dl > 0) ringColor = "ring-accent/40";
+  else ringColor = "ring-amber-500/40";
+
+  return (
+    <div
+      className={`shrink-0 w-36 snap-start rounded-lg ring-1 ${ringColor} bg-surface overflow-hidden hover:ring-2 transition-all`}
+    >
+      <Link href={`/library/${mediaId}/season/${season.number}`}>
+        <div className="relative aspect-[2/3] bg-bg/40">
+          {season.posterUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={season.posterUrl} alt="" className="absolute inset-0 w-full h-full object-cover" />
+          ) : null}
+          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/95 to-transparent p-2">
+            <div className="text-xs font-medium">
+              {season.name ?? `Season ${season.number}`}
+            </div>
+            <div className="text-[10px] text-muted">
+              {dl}/{aired || 0} ep
+            </div>
+            <div className="h-0.5 mt-1 bg-white/10 rounded overflow-hidden">
+              <div className="h-full bg-accent transition-[width]" style={{ width: `${pct}%` }} />
+            </div>
+          </div>
+        </div>
+      </Link>
+      <button
+        onClick={onGrabPack}
+        disabled={grabbing}
+        className="w-full px-2 py-1.5 text-[10px] text-accent hover:bg-accent/10 inline-flex items-center justify-center gap-1 disabled:opacity-50"
+      >
+        {grabbing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Zap className="w-3 h-3" />}
+        Grab pack
+      </button>
+    </div>
+  );
+}
+
+function MovieFileBlock({ media, download }: { media: Media; download?: Download }) {
+  const has = media.status === "downloaded" || download?.state === "completed";
+  if (!has) {
+    return (
+      <div className="bg-surface border border-border rounded-lg p-5 text-sm text-muted">
+        No file yet. Use Auto-grab or Search & explain to fetch this movie.
+      </div>
+    );
+  }
+  return (
+    <div className="bg-surface border border-border rounded-lg p-5 space-y-2 text-sm">
+      <div className="font-mono text-xs break-all">{download?.title ?? "—"}</div>
+      <div className="flex items-center gap-3 text-xs text-muted flex-wrap">
+        {download?.quality && <span className="text-emerald-400">✓ {download.quality}</span>}
+        {download?.sizeBytes && <span>{(download.sizeBytes / 1e9).toFixed(2)} GB</span>}
+        {download?.state && <span>state: {download.state}</span>}
+      </div>
+    </div>
+  );
+}
+
+function ActivityIcon({ kind }: { kind: string }) {
+  if (kind === "grabbed") return <Zap className="w-3 h-3 text-accent" />;
+  if (kind === "imported") return <Check className="w-3 h-3 text-emerald-400" />;
+  if (kind === "upgraded") return <RefreshCcw className="w-3 h-3 text-blue-400" />;
+  if (kind === "failed") return <AlertCircle className="w-3 h-3 text-rose-400" />;
+  return <Link2 className="w-3 h-3 text-muted" />;
+}
+
+function relTime(iso: string): string {
+  const d = new Date(iso);
+  const diff = Date.now() - d.getTime();
+  const m = Math.round(diff / 60_000);
+  if (m < 1) return "just now";
+  if (m < 60) return `${m}m ago`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const days = Math.round(h / 24);
+  if (days < 30) return `${days}d ago`;
+  return d.toLocaleDateString();
+}
+
+function computeTvStats(seasons: Season[]) {
+  const real = seasons.filter((s) => s.number > 0);
+  let total = 0,
+    downloaded = 0,
+    aired = 0,
+    monitored = 0;
+  for (const s of real) {
+    if (s.monitored) monitored++;
+    for (const e of s.episodes ?? []) {
+      total++;
+      if (e.status === "downloaded") downloaded++;
+      if (e.status !== "unaired") aired++;
+    }
+  }
+  return { seasonCount: real.length, monitoredSeasons: monitored, total, downloaded, aired };
 }
 
 function tmdbStatusLabel(s?: string): string {
@@ -284,194 +659,16 @@ function tmdbStatusColor(s?: string): string {
       return "text-muted";
   }
 }
-
-function SeasonCard({
-  season,
-  isOpen,
-  onToggleOpen,
-  onToggleMonitor,
-  onGrabPack,
-  onSearch,
-  grabbing,
-}: {
-  season: Season;
-  isOpen: boolean;
-  onToggleOpen: () => void;
-  onToggleMonitor: (m: boolean) => void;
-  onGrabPack: () => void;
-  onSearch: () => void;
-  grabbing: boolean;
-}) {
-  const eps = season.episodes;
-  const total = eps.length;
-  const dl = eps.filter((e) => e.status === "downloaded").length;
-  const wanted = eps.filter((e) => e.status === "wanted").length;
-  const unaired = eps.filter((e) => e.status === "unaired").length;
-  const aired = total - unaired;
-
-  let stateLabel = "Future";
-  let stateClass = "border-zinc-800 opacity-60";
-  if (!season.monitored) {
-    stateLabel = "Unmonitored";
-    stateClass = "border-dashed border-zinc-800";
-  } else if (aired === 0) {
-    stateLabel = "Future";
-  } else if (dl === aired) {
-    stateLabel = "Complete";
-    stateClass = "border-zinc-800";
-  } else if (unaired > 0) {
-    stateLabel = "Airing";
-    stateClass = "border-accent/50";
-  } else {
-    stateLabel = "Missing";
-    stateClass = "border-amber-500/40";
+function tmdbDotBg(s?: string): string {
+  switch (s) {
+    case "returning_series":
+    case "in_production":
+      return "bg-emerald-500";
+    case "ended":
+      return "bg-zinc-500";
+    case "canceled":
+      return "bg-rose-500";
+    default:
+      return "bg-zinc-500";
   }
-
-  const pct = total ? Math.round((dl / total) * 100) : 0;
-
-  return (
-    <div className={`bg-surface border ${stateClass} rounded-lg p-3 flex flex-col gap-2`}>
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <div className="text-xs font-mono text-muted">S{String(season.number).padStart(2, "0")}</div>
-          <div className="text-xs">{stateLabel}</div>
-        </div>
-        <button
-          title={season.monitored ? "Unmonitor" : "Monitor"}
-          onClick={(e) => {
-            e.stopPropagation();
-            onToggleMonitor(!season.monitored);
-          }}
-          className={`shrink-0 w-7 h-4 rounded-full relative transition-colors ${
-            season.monitored ? "bg-accent" : "bg-zinc-700"
-          }`}
-        >
-          <span
-            className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-transform ${
-              season.monitored ? "translate-x-3.5" : "translate-x-0.5"
-            }`}
-          />
-        </button>
-      </div>
-
-      <div>
-        <div className="text-xs text-muted">
-          {dl}/{aired || 0} ep
-        </div>
-        <div className="h-1 mt-1 bg-bg/60 rounded overflow-hidden">
-          <div className="h-full bg-accent transition-[width]" style={{ width: `${pct}%` }} />
-        </div>
-      </div>
-
-      <div className="flex gap-1 mt-1">
-        <button
-          onClick={onToggleOpen}
-          className="flex-1 inline-flex items-center justify-center gap-1 text-[11px] px-2 py-1 rounded border border-border hover:bg-white/5"
-        >
-          {isOpen ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-          {isOpen ? "Hide" : "Episodes"}
-        </button>
-        <button
-          onClick={onSearch}
-          title="Search & explain releases"
-          className="px-2 py-1 rounded border border-border hover:bg-white/5"
-        >
-          <Search className="w-3 h-3" />
-        </button>
-        <button
-          onClick={onGrabPack}
-          disabled={grabbing}
-          title="Auto-grab season pack"
-          className="px-2 py-1 rounded bg-accent/20 text-accent hover:bg-accent/30 disabled:opacity-50"
-        >
-          {grabbing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Zap className="w-3 h-3" />}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function EpisodeTable({
-  season,
-  onGrabEpisode,
-  onSearchEpisode,
-}: {
-  season: Season;
-  onGrabEpisode: (ep: number) => void;
-  onSearchEpisode: (ep: number) => void;
-}) {
-  return (
-    <div className="bg-surface border border-border rounded-lg overflow-hidden">
-      <div className="flex items-center justify-between bg-bg/40 px-3 py-2 border-b border-border">
-        <div className="text-xs font-medium">
-          {season.name ?? `Season ${season.number}`}
-          <span className="text-muted ml-2">{season.episodes.length} episodes</span>
-        </div>
-      </div>
-      <table className="w-full text-xs">
-        <thead className="bg-bg/40 text-muted text-[10px] uppercase tracking-wider">
-          <tr>
-            <th className="text-left px-3 py-2 font-medium">#</th>
-            <th className="text-left px-3 py-2 font-medium">Title</th>
-            <th className="text-left px-3 py-2 font-medium">Air date</th>
-            <th className="text-left px-3 py-2 font-medium">Status</th>
-            <th className="text-right px-3 py-2 font-medium">Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {season.episodes.map((e) => (
-            <tr key={e.number} className="border-t border-border hover:bg-white/2">
-              <td className="px-3 py-2 font-mono text-muted">
-                S{String(season.number).padStart(2, "0")}E{String(e.number).padStart(2, "0")}
-              </td>
-              <td className="px-3 py-2">{e.name ?? "—"}</td>
-              <td className="px-3 py-2 text-muted">{e.airDate ?? "—"}</td>
-              <td className="px-3 py-2">
-                <EpisodeStatusPill status={e.status} />
-              </td>
-              <td className="px-3 py-2 text-right">
-                <div className="inline-flex items-center gap-1">
-                  <button
-                    onClick={() => onSearchEpisode(e.number)}
-                    title="Search interactive"
-                    className="p-1 rounded hover:bg-white/5 text-muted"
-                  >
-                    <Search className="w-3.5 h-3.5" />
-                  </button>
-                  <button
-                    onClick={() => onGrabEpisode(e.number)}
-                    disabled={e.status === "unaired" || e.status === "downloaded"}
-                    title="Grab"
-                    className="p-1 rounded hover:bg-accent/15 text-accent disabled:opacity-30"
-                  >
-                    <Zap className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function EpisodeStatusPill({ status }: { status: string }) {
-  const cfg: Record<string, { color: string; icon?: any; label: string }> = {
-    downloaded: { color: "text-emerald-400", icon: Check, label: "Downloaded" },
-    wanted: { color: "text-amber-400", icon: AlertCircle, label: "Wanted" },
-    snatched: { color: "text-blue-400", icon: Loader2, label: "Snatched" },
-    downloading: { color: "text-blue-400", icon: Loader2, label: "Downloading" },
-    unaired: { color: "text-zinc-500", icon: Clock, label: "Unaired" },
-    missing: { color: "text-rose-400", icon: AlertCircle, label: "Missing" },
-    unmonitored: { color: "text-muted/50", label: "Unmonitored" },
-  };
-  const c = cfg[status] ?? { color: "text-muted", label: status };
-  const Icon = c.icon;
-  return (
-    <span className={`inline-flex items-center gap-1 ${c.color}`}>
-      {Icon && <Icon className={`w-3 h-3 ${status === "downloading" || status === "snatched" ? "animate-spin" : ""}`} />}
-      {c.label}
-    </span>
-  );
 }

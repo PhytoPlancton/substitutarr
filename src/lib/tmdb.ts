@@ -187,3 +187,120 @@ export async function getEpisodes(id: number, season: number) {
     airDate: e.air_date,
   }));
 }
+
+export type CastMember = {
+  id: number;
+  name: string;
+  character: string;
+  profile?: string | null;
+};
+
+export type Extras = {
+  cast: CastMember[];
+  director?: string;
+  writers: string[];
+  trailerKey?: string; // YouTube key
+  externalIds: { imdbId?: string; tvdbId?: number };
+  similar: { tmdbId: number; type: "movie" | "tv"; title: string; year?: number; poster?: string | null }[];
+  episodeStills: Record<string, string>; // key = "S{n}E{n}", val = still URL
+  collection?: { id: number; name: string; backdrop?: string | null; movies: { tmdbId: number; title: string; year?: number; poster?: string | null }[] };
+};
+
+const profilePic = (p?: string | null) => (p ? `https://image.tmdb.org/t/p/w185${p}` : null);
+const still = (p?: string | null) => (p ? `https://image.tmdb.org/t/p/w300${p}` : null);
+
+/** Fetch the rich metadata used by the detail pages — runs in parallel server-side. */
+export async function getExtras(type: "movie" | "tv", id: number): Promise<Extras> {
+  const [credits, videos, externalIds, similar] = await Promise.all([
+    tmdb<any>(`/${type}/${id}/credits`).catch(() => ({})),
+    tmdb<any>(`/${type}/${id}/videos`).catch(() => ({})),
+    tmdb<any>(`/${type}/${id}/external_ids`).catch(() => ({})),
+    tmdb<any>(`/${type}/${id}/similar`).catch(() => ({})),
+  ]);
+
+  const cast: CastMember[] = (credits.cast ?? []).slice(0, 10).map((c: any) => ({
+    id: c.id,
+    name: c.name,
+    character: c.character ?? "",
+    profile: profilePic(c.profile_path),
+  }));
+
+  const crew = credits.crew ?? [];
+  const director = crew.find((c: any) => c.job === "Director")?.name;
+  const writers = [
+    ...new Set(crew.filter((c: any) => /writer|screenplay|story/i.test(c.job ?? "")).map((c: any) => c.name)),
+  ].slice(0, 3) as string[];
+
+  const trailer =
+    (videos.results ?? []).find((v: any) => v.site === "YouTube" && v.type === "Trailer") ??
+    (videos.results ?? []).find((v: any) => v.site === "YouTube");
+
+  const sim = (similar.results ?? []).slice(0, 12).map((r: any) => ({
+    tmdbId: r.id,
+    type,
+    title: r.title ?? r.name,
+    year: ((r.release_date ?? r.first_air_date) || "").slice(0, 4),
+    poster: poster(r.poster_path),
+  }));
+
+  // Episode stills (TV) — fetch per-season in parallel for the seasons we have
+  const episodeStills: Record<string, string> = {};
+  if (type === "tv") {
+    try {
+      const tv = await tmdb<any>(`/tv/${id}`);
+      const aired = (tv.seasons ?? []).filter(
+        (s: any) => s.season_number != null && (s.episode_count ?? 0) > 0 && s.air_date,
+      );
+      const details = await Promise.all(
+        aired.slice(0, 30).map((s: any) => tmdb<any>(`/tv/${id}/season/${s.season_number}`).catch(() => null)),
+      );
+      for (const d of details) {
+        for (const ep of d?.episodes ?? []) {
+          const url = still(ep.still_path);
+          if (url) episodeStills[`S${d.season_number}E${ep.episode_number}`] = url;
+        }
+      }
+    } catch {
+      /* skip stills if anything fails — they're a nice-to-have */
+    }
+  }
+
+  // Movie collection
+  let collection: Extras["collection"];
+  if (type === "movie") {
+    try {
+      const movie = await tmdb<any>(`/movie/${id}`);
+      if (movie.belongs_to_collection?.id) {
+        const c = await tmdb<any>(`/collection/${movie.belongs_to_collection.id}`);
+        collection = {
+          id: c.id,
+          name: c.name,
+          backdrop: backdrop(c.backdrop_path),
+          movies: (c.parts ?? []).map((p: any) => ({
+            tmdbId: p.id,
+            title: p.title,
+            year: (p.release_date || "").slice(0, 4),
+            poster: poster(p.poster_path),
+          })),
+        };
+      }
+    } catch {
+      /* skip if collection fetch fails */
+    }
+  }
+
+  return {
+    cast,
+    director,
+    writers,
+    trailerKey: trailer?.key,
+    externalIds: {
+      imdbId: externalIds.imdb_id,
+      tvdbId: externalIds.tvdb_id,
+    },
+    similar: sim,
+    episodeStills,
+    collection,
+  };
+}
+
