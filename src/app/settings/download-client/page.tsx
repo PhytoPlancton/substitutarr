@@ -11,7 +11,7 @@ type Settings = {
 
 export default function DownloadClientPage() {
   const qc = useQueryClient();
-  const { data } = useQuery<{ settings: Settings | null }>({
+  const { data } = useQuery<{ settings: Settings | null; effective?: Settings }>({
     queryKey: ["settings"],
     queryFn: async () => (await fetch("/api/settings")).json(),
   });
@@ -25,8 +25,11 @@ export default function DownloadClientPage() {
   const [status, setStatus] = useState<ConnStatus>("unknown");
   const [hint, setHint] = useState<string | undefined>();
 
+  // Prefer "effective" (DB merged with env fallbacks) so the user sees the
+  // values that are actually used at runtime, not just what's persisted.
   useEffect(() => {
-    if (data?.settings) setForm(data.settings);
+    const src = data?.effective ?? data?.settings;
+    if (src) setForm(src);
   }, [data]);
   useEffect(() => {
     if (stored?.status) {

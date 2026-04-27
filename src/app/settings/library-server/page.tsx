@@ -11,7 +11,7 @@ type Settings = {
 
 export default function LibraryServerPage() {
   const qc = useQueryClient();
-  const { data } = useQuery<{ settings: Settings | null }>({
+  const { data } = useQuery<{ settings: Settings | null; effective?: Settings }>({
     queryKey: ["settings"],
     queryFn: async () => (await fetch("/api/settings")).json(),
   });
@@ -26,7 +26,8 @@ export default function LibraryServerPage() {
   const [hint, setHint] = useState<string | undefined>();
 
   useEffect(() => {
-    if (data?.settings) setForm(data.settings);
+    const src = data?.effective ?? data?.settings;
+    if (src) setForm(src);
   }, [data]);
   useEffect(() => {
     if (stored?.status) {
