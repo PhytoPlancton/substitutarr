@@ -56,7 +56,6 @@ export default function DownloadsPage() {
     <div className="space-y-6">
       <header>
         <h1 className="text-2xl font-semibold">{t("downloads.title")}</h1>
-        <p className="text-muted text-sm">{t("downloads.subtitle")}</p>
       </header>
 
       {items.length === 0 ? (

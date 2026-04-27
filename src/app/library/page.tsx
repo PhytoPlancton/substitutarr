@@ -82,7 +82,6 @@ export default function LibraryPage() {
     <div className="space-y-6">
       <header>
         <h1 className="text-2xl font-semibold">{t("library.title")}</h1>
-        <p className="text-muted text-sm">{t("library.countMonitored", { count: items.length })}</p>
       </header>
 
       {items.length === 0 ? (
@@ -236,7 +235,7 @@ function ItemActions({
       {menuOpen && (
         <div
           onClick={(e) => e.stopPropagation()}
-          className="absolute right-0 top-full mt-1 z-10 bg-surface border border-border rounded-md shadow-lg text-xs whitespace-nowrap py-1 min-w-[180px]"
+          className="absolute right-0 top-full mt-1 z-50 bg-surface border border-border rounded-md shadow-xl text-xs whitespace-nowrap py-1 min-w-[180px]"
         >
           <button
             onClick={() => {

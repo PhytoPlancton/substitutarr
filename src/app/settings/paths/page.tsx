@@ -35,7 +35,7 @@ export default function PathsPage() {
 
   return (
     <div className="space-y-6 max-w-3xl">
-      <SettingsHeader title={t("paths.title")} description={t("paths.description")} />
+      <SettingsHeader title={t("paths.title")} />
 
       <Section>
         <Field

@@ -48,7 +48,7 @@ export default function ApiKeysPage() {
 
   return (
     <div className="space-y-6 max-w-3xl">
-      <SettingsHeader title={t("apiKeys.title")} description={t("apiKeys.description")} />
+      <SettingsHeader title={t("apiKeys.title")} />
 
       {revealed && (
         <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded text-sm">

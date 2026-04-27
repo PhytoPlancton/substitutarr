@@ -112,7 +112,6 @@ export default function SearchPage() {
     <div className="space-y-6">
       <header>
         <h1 className="text-2xl font-semibold">{t("search.title")}</h1>
-        <p className="text-muted text-sm">{t("search.subtitle")}</p>
       </header>
 
       <div className="flex flex-col md:flex-row gap-3">

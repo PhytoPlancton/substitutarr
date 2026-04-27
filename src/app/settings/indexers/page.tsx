@@ -56,7 +56,7 @@ export default function IndexersPage() {
 
   return (
     <div className="space-y-6 max-w-3xl">
-      <SettingsHeader title={t("indexers.title")} description={t("indexers.description")} />
+      <SettingsHeader title={t("indexers.title")} />
 
       <section className="bg-surface border border-border rounded-lg p-5 space-y-4">
         <div className="space-y-2">

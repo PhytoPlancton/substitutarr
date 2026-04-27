@@ -28,9 +28,9 @@ export function MediaCard({ poster, title, year, type, status, progress, onClick
   return (
     <div
       onClick={onClick}
-      className={`group bg-surface border border-border ${borderClass ? `border-l-2 ${borderClass}` : ""} rounded-lg overflow-hidden cursor-pointer hover:border-accent/60 transition-colors`}
+      className={`bg-surface border border-border ${borderClass ? `border-l-2 ${borderClass}` : ""} rounded-lg ${onClick ? "cursor-pointer" : ""}`}
     >
-      <div className="relative aspect-[2/3] bg-black/30">
+      <div className="relative aspect-[2/3] bg-black/30 rounded-t-lg overflow-hidden">
         {poster ? (
           <Image src={poster} alt={title} fill sizes="(max-width:640px) 50vw, 200px" className="object-cover" />
         ) : (

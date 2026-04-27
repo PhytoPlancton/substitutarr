@@ -44,10 +44,7 @@ export default function ProfilesPage() {
   return (
     <div className="space-y-6">
       <header className="flex items-end justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">{t("profiles.title")}</h1>
-          <p className="text-muted text-sm">{t("profiles.subtitle")}</p>
-        </div>
+        <h1 className="text-2xl font-semibold">{t("profiles.title")}</h1>
         <CreateButton onCreated={(id) => setActiveId(id)} />
       </header>
 

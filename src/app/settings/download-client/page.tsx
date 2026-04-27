@@ -73,10 +73,7 @@ export default function DownloadClientPage() {
   return (
     <div className="space-y-6 max-w-3xl">
       <header className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold">{t("downloadClient.title")}</h1>
-          <p className="text-muted text-sm mt-1">{t("downloadClient.description")}</p>
-        </div>
+        <h1 className="text-2xl font-semibold">{t("downloadClient.title")}</h1>
         <StatusDot status={status} hint={hint} />
       </header>
 

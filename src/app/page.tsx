@@ -44,7 +44,6 @@ export default function DashboardPage() {
     <div className="space-y-8">
       <header>
         <h1 className="text-2xl font-semibold tracking-tight">{t("dashboard.title")}</h1>
-        <p className="text-muted text-sm">{t("dashboard.subtitle")}</p>
       </header>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
