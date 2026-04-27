@@ -1,5 +1,5 @@
 "use client";
-import { use, useState } from "react";
+import { use, useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -118,6 +118,26 @@ export default function MediaDetailPage({ params }: { params: Promise<{ id: stri
     onSuccess: () => { window.location.href = "/library"; },
   });
 
+  const refresh = useMutation({
+    mutationFn: async () => fetch(`/api/library/${id}/refresh`, { method: "POST" }).then((r) => r.json()),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["library", id] });
+      qc.invalidateQueries({ queryKey: ["library-extras", id] });
+    },
+  });
+
+  // Auto-refresh once if the persisted seasons are missing names or posters
+  // (entries added before the schema upgrade).
+  const needsRefresh =
+    data?.item?.type === "tv" &&
+    !!data.item.seasons?.some((s) => s.number > 0 && (!s.name || !s.posterUrl)) &&
+    !refresh.isPending &&
+    !refresh.data;
+  useEffect(() => {
+    if (needsRefresh) refresh.mutate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [needsRefresh]);
+
   if (isLoading || !data?.item) return <div className="text-muted">Loading…</div>;
   const m = data.item;
   const isTv = m.type === "tv";
@@ -163,11 +183,23 @@ export default function MediaDetailPage({ params }: { params: Promise<{ id: stri
         </section>
       )}
 
-      {/* TV: Seasons rail + per-season grab/search */}
+      {/* TV: Seasons grid */}
       {isTv && seasons.length > 0 && (
         <section className="space-y-3">
-          <h2 className="text-sm uppercase tracking-wider text-muted">Seasons</h2>
-          <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1 snap-x">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm uppercase tracking-wider text-muted">
+              Seasons {refresh.isPending && <Loader2 className="inline w-3 h-3 animate-spin ml-1" />}
+            </h2>
+            <button
+              onClick={() => refresh.mutate()}
+              disabled={refresh.isPending}
+              className="inline-flex items-center gap-1 text-xs text-muted hover:text-white"
+              title="Refresh from TMDB"
+            >
+              <RefreshCcw className={`w-3 h-3 ${refresh.isPending ? "animate-spin" : ""}`} /> Refresh
+            </button>
+          </div>
+          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 gap-3">
             {seasons.map((s) => (
               <SeasonCard
                 key={s.number}
@@ -189,14 +221,14 @@ export default function MediaDetailPage({ params }: { params: Promise<{ id: stri
         </section>
       )}
 
-      {/* Cast (rond Apple TV style) */}
+      {/* Cast — wraps on small screens */}
       {extrasData?.extras?.cast && extrasData.extras.cast.length > 0 && (
         <section className="space-y-3">
           <h2 className="text-sm uppercase tracking-wider text-muted">Cast</h2>
-          <div className="flex gap-4 overflow-x-auto pb-2 -mx-1 px-1">
-            {extrasData.extras.cast.map((c) => (
-              <div key={c.id} className="shrink-0 text-center w-20" title={c.character}>
-                <div className="relative w-16 h-16 rounded-full overflow-hidden mx-auto bg-bg/40">
+          <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-3">
+            {extrasData.extras.cast.slice(0, 10).map((c) => (
+              <div key={c.id} className="text-center" title={c.character}>
+                <div className="relative w-14 h-14 sm:w-16 sm:h-16 rounded-full overflow-hidden mx-auto bg-bg/40">
                   {c.profile ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={c.profile} alt={c.name} className="absolute inset-0 w-full h-full object-cover" />
@@ -251,51 +283,25 @@ export default function MediaDetailPage({ params }: { params: Promise<{ id: stri
         </section>
       )}
 
-      {/* Movie collection */}
+      {/* Movie collection — capped grid */}
       {!isTv && extrasData?.extras?.collection && (
         <section className="space-y-3">
           <h2 className="text-sm uppercase tracking-wider text-muted">{extrasData.extras.collection.name}</h2>
-          <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1">
-            {extrasData.extras.collection.movies.map((mv) => (
-              <div key={mv.tmdbId} className="shrink-0 w-32">
-                <div className="relative aspect-[2/3] rounded-md overflow-hidden bg-bg/40">
-                  {mv.poster ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={mv.poster} alt={mv.title} className="absolute inset-0 w-full h-full object-cover" />
-                  ) : (
-                    <div className="absolute inset-0 flex items-center justify-center text-xs text-muted p-2 text-center">
-                      {mv.title}
-                    </div>
-                  )}
-                </div>
-                <div className="mt-1 text-[11px] truncate">{mv.title}</div>
-                <div className="text-[10px] text-muted">{mv.year}</div>
-              </div>
+          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-3">
+            {extrasData.extras.collection.movies.slice(0, 16).map((mv) => (
+              <PosterTile key={mv.tmdbId} title={mv.title} year={mv.year} poster={mv.poster} />
             ))}
           </div>
         </section>
       )}
 
-      {/* Similar */}
+      {/* Similar — capped at 6 visible items */}
       {extrasData?.extras?.similar && extrasData.extras.similar.length > 0 && (
         <section className="space-y-3">
           <h2 className="text-sm uppercase tracking-wider text-muted">Similar</h2>
-          <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1">
-            {extrasData.extras.similar.map((sim) => (
-              <div key={sim.tmdbId} className="shrink-0 w-32">
-                <div className="relative aspect-[2/3] rounded-md overflow-hidden bg-bg/40">
-                  {sim.poster ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={sim.poster} alt={sim.title} className="absolute inset-0 w-full h-full object-cover" />
-                  ) : (
-                    <div className="absolute inset-0 flex items-center justify-center text-xs text-muted p-2 text-center">
-                      {sim.title}
-                    </div>
-                  )}
-                </div>
-                <div className="mt-1 text-[11px] truncate">{sim.title}</div>
-                <div className="text-[10px] text-muted">{sim.year}</div>
-              </div>
+          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3">
+            {extrasData.extras.similar.slice(0, 6).map((sim) => (
+              <PosterTile key={sim.tmdbId} title={sim.title} year={sim.year} poster={sim.poster} />
             ))}
           </div>
         </section>
@@ -544,7 +550,7 @@ function SeasonCard({
 
   return (
     <div
-      className={`shrink-0 w-36 snap-start rounded-lg ring-1 ${ringColor} bg-surface overflow-hidden hover:ring-2 transition-all`}
+      className={`rounded-lg ring-1 ${ringColor} bg-surface overflow-hidden hover:ring-2 transition-all`}
     >
       <Link href={`/library/${mediaId}/season/${season.number}`}>
         <div className="relative aspect-[2/3] bg-bg/40">
@@ -573,6 +579,33 @@ function SeasonCard({
         {grabbing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Zap className="w-3 h-3" />}
         Grab pack
       </button>
+    </div>
+  );
+}
+
+function PosterTile({
+  title,
+  year,
+  poster,
+}: {
+  title: string;
+  year?: number | string;
+  poster?: string | null;
+}) {
+  return (
+    <div>
+      <div className="relative aspect-[2/3] rounded-md overflow-hidden bg-bg/40 ring-1 ring-white/5">
+        {poster ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={poster} alt={title} className="absolute inset-0 w-full h-full object-cover" />
+        ) : (
+          <div className="absolute inset-0 flex items-center justify-center text-xs text-muted p-2 text-center">
+            {title}
+          </div>
+        )}
+      </div>
+      <div className="mt-1 text-[11px] truncate">{title}</div>
+      <div className="text-[10px] text-muted">{year}</div>
     </div>
   );
 }
