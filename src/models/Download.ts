@@ -18,6 +18,7 @@ const DownloadSchema = new Schema(
       default: "queued",
     },
     progress: { type: Number, default: 0 },
+    completedAt: Date,
     season: Number,
     episode: Number,
     importedPath: String,
