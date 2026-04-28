@@ -28,6 +28,13 @@ const UserSettingsSchema = new Schema(
     },
     notifications: {
       slackWebhook: String,
+      /** Discord webhook URL — substitutarr fans grab/complete/failed events here. */
+      discordWebhook: String,
+      /** Which events to send to Discord. Defaults to completed + failed (most useful). */
+      discordEvents: {
+        type: [String],
+        default: ["request.completed", "request.failed"],
+      },
     },
     apiKeys: [
       {

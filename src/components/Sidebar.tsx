@@ -58,6 +58,17 @@ const SECTIONS: Section[] = [
         },
       },
       {
+        href: "/settings/indexers",
+        labelKey: "nav.indexers",
+        icon: Rss,
+        statusDot: (s) => {
+          if (!s.hasIndexer) return "red";
+          if (s.anyIndexerError) return "red";
+          if (s.anyIndexerUntested) return "amber";
+          return null;
+        },
+      },
+      {
         href: "/settings/library-server",
         labelKey: "nav.libraryServer",
         icon: Server,
@@ -69,17 +80,6 @@ const SECTIONS: Section[] = [
         },
       },
       { href: "/settings/paths", labelKey: "nav.paths", icon: FolderTree },
-      {
-        href: "/settings/indexers",
-        labelKey: "nav.indexers",
-        icon: Rss,
-        statusDot: (s) => {
-          if (!s.hasIndexer) return "red";
-          if (s.anyIndexerError) return "red";
-          if (s.anyIndexerUntested) return "amber";
-          return null;
-        },
-      },
       { href: "/settings/api-keys", labelKey: "nav.apiKeys", icon: KeyRound },
     ],
   },

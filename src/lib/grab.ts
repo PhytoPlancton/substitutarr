@@ -8,6 +8,8 @@ import { searchAll } from "./indexers/registry";
 import { getUserQbit } from "./qbittorrent";
 import { ensureProfilesForUser } from "./profile-bootstrap";
 import { recordHealth } from "./connection-health";
+import { addStrike } from "./blocklist";
+import { emit as emitWebhook } from "./webhooks";
 import type { Release } from "./indexers/types";
 
 function infoHashFromMagnet(magnet: string): string | undefined {
@@ -28,7 +30,11 @@ async function pushToQbit(
 ) {
   const settings = await UserSettings.findOne({ userId }).lean<any>();
   const qbit = await getUserQbit(userId);
-  const category = settings?.qbittorrent?.category ?? "substitutarr";
+  // Categories are typed (`substitutarr-movies` / `substitutarr-tv`) so the
+  // post-DL PowerShell hook can route to the right library folder.
+  const customBase = settings?.qbittorrent?.category;
+  const baseCategory = customBase && customBase !== "substitutarr" ? customBase : "substitutarr";
+  const category = `${baseCategory}-${media.type === "movie" ? "movies" : "tv"}`;
   // Only override qBit's own default save path if the user explicitly configured one.
   // Otherwise we'd push something like "/downloads/movies" to a Windows host → qBit error.
   const userPath =
@@ -52,6 +58,20 @@ async function pushToQbit(
       ok: false,
       detail: e?.message ?? String(e),
     });
+    // Strike the release so we don't retry the exact same broken torrent.
+    // After 3 strikes (across all attempts on this user), it gets blocked for 24h
+    // automatically — that prevents tight retry loops on truly-busted releases.
+    if (release.infoHash) {
+      void addStrike({
+        userId,
+        infoHash: release.infoHash,
+        releaseTitle: release.title,
+        indexer: release.indexer,
+        mediaId: media._id?.toString(),
+        season,
+        episode,
+      }).catch(() => {});
+    }
     throw e;
   }
 
@@ -121,6 +141,27 @@ async function pushToQbit(
       { $set: { status: "downloading", lastSearchedAt: new Date() } },
     );
   }
+
+  // Outbound notify — Discord + user-configured webhooks
+  void emitWebhook(userId, "request.grabbed", {
+    type: media.type,
+    mediaId: media._id?.toString(),
+    tmdbId: media.tmdbId,
+    title: media.title,
+    year: media.year,
+    poster: media.poster,
+    episodes: media.type === "tv" && (season != null || episode != null)
+      ? [{ season: season ?? null, episode: episode ?? null }]
+      : undefined,
+    release: {
+      title: release.title,
+      indexer: release.indexer,
+      quality: release.quality,
+      sizeBytes: release.sizeBytes,
+      seeders: release.seeders,
+      infoHash: release.infoHash,
+    },
+  }).catch(() => {});
 }
 
 export async function grabBest(opts: {
@@ -202,9 +243,20 @@ export async function grabBest(opts: {
 
   const sep = lastErrors.length ? lastErrors.map((e) => `${e.indexer}: ${e.message}`).join(" · ") : "";
   const detail = lastRejected ? `; ${lastRejected} filtered out by last profile` : "";
+  const errorMsg = `no releases passed any profile — ${sep}${detail}`;
+  void emitWebhook(opts.userId, "request.failed", {
+    type: media.type,
+    mediaId: media._id?.toString(),
+    tmdbId: media.tmdbId,
+    title: media.title,
+    year: media.year,
+    poster: media.poster,
+    error: errorMsg,
+    profileChain: chain,
+  }).catch(() => {});
   return {
     ok: false,
-    error: `no releases passed any profile — ${sep}${detail}`,
+    error: errorMsg,
     profile: chain[chain.length - 1],
     profileChain: chain,
     rejected: lastRejected,

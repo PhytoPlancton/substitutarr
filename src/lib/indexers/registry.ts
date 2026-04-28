@@ -8,6 +8,7 @@ import { parseRelease, type ParsedRelease } from "@/lib/release-parser";
 import { scoreRelease, type ScoreBreakdown } from "@/lib/release-scoring";
 import { queryVariants } from "@/lib/normalize";
 import { recordHealth } from "@/lib/connection-health";
+import { filterBlocked } from "@/lib/blocklist";
 import type { ProfileDoc } from "@/models/Profile";
 
 type IndexerWithId = { id: string; name: string; indexer: Indexer };
@@ -119,13 +120,23 @@ export async function searchAll(
     if (!prev || (r.seeders ?? 0) > (prev.seeders ?? 0)) byKey.set(key, r);
   }
 
+  // Filter blocked releases — never retry something the user/auto-blocked
+  const beforeBlock = [...byKey.values()];
+  const afterBlock = await filterBlocked(userId, beforeBlock);
+  if (afterBlock.length < beforeBlock.length) {
+    errors.push({
+      indexer: "(blocklist)",
+      message: `${beforeBlock.length - afterBlock.length} blocked release${beforeBlock.length - afterBlock.length > 1 ? "s" : ""} excluded`,
+    });
+  }
+
   // Year-tolerance filter (uses TMDB release_dates window if provided)
   const yMin = input.yearMin;
   const yMax = input.yearMax;
 
   const accepted: ScoredRelease[] = [];
   const rejected: { release: Release; reason: string }[] = [];
-  for (const r of byKey.values()) {
+  for (const r of afterBlock) {
     const parsed = parseRelease(r.title, { sizeBytes: r.sizeBytes, seeders: r.seeders });
     if (parsed.year && yMin && yMax && (parsed.year < yMin || parsed.year > yMax)) {
       rejected.push({ release: r, reason: `year ${parsed.year} outside [${yMin}, ${yMax}]` });
