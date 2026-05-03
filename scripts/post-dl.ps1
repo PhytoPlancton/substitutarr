@@ -36,7 +36,7 @@ param(
 )
 
 # ============================================================================
-# 1. CONFIGURATION  — populated by the setup wizard at download time.
+# 1. CONFIGURATION  - populated by the setup wizard at download time.
 #    Placeholders {{...}} are replaced server-side. If you see them literal in
 #    this file, you copied the template instead of the configured download.
 # ============================================================================
@@ -85,10 +85,10 @@ Get-ChildItem $Config.LogDir -Filter 'post-dl-*.log' -ErrorAction SilentlyContin
 try {
 
 # ============================================================================
-# 2.5  TEST MODE — handshake with the setup wizard, no disk action
+# 2.5  TEST MODE - handshake with the setup wizard, no disk action
 # ============================================================================
 if ($PSCmdlet.ParameterSetName -eq 'Test') {
-  Write-Log INFO "==> TEST MODE — verifyToken='$VerifyToken'"
+  Write-Log INFO "==> TEST MODE - verifyToken='$VerifyToken'"
   if (-not $Config.HmacSecret -or $Config.HmacSecret -eq '{{HMAC_SECRET}}') {
     Write-Log ERROR "HMAC secret not configured. Re-download the script from /setup."
     Write-Host "ERROR: HMAC secret not configured. Re-download the script from /setup."
@@ -104,7 +104,7 @@ if ($PSCmdlet.ParameterSetName -eq 'Test') {
               -Headers @{ 'X-Substitutarr-Signature' = "sha256=$sig" } `
               -TimeoutSec $Config.HttpTimeoutSec
     Write-Log INFO "verify ack: $($resp | ConvertTo-Json -Compress)"
-    Write-Host "OK — substitutarr received the ping. You can close this window."
+    Write-Host "OK - substitutarr received the ping. You can close this window."
     exit 0
   } catch {
     Write-Log ERROR "verify POST failed: $($_.Exception.Message)"
@@ -136,7 +136,7 @@ $moviesVol = Get-VolumeRoot $Config.MoviesRoot
 $tvVol     = Get-VolumeRoot $Config.TvRoot
 
 if ($dlVol -ne $moviesVol -or $dlVol -ne $tvVol) {
-  Write-Log ERROR "Cross-volume detected: dl=$dlVol movies=$moviesVol tv=$tvVol. Hardlinks require same volume — move qBit save_path to the same drive as your Jellyfin library."
+  Write-Log ERROR "Cross-volume detected: dl=$dlVol movies=$moviesVol tv=$tvVol. Hardlinks require same volume - move qBit save_path to the same drive as your Jellyfin library."
   exit 1
 }
 

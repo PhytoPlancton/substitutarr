@@ -69,16 +69,21 @@ export async function GET(req: Request) {
     .replace(/\{\{HMAC_SECRET\}\}/g, psEscape(secret))
     .replace(/\{\{SUBSTITUTARR_URL\}\}/g, psEscape(baseUrl));
 
-  const banner = `# DOWNLOADED FROM substitutarr — DO NOT SHARE THIS FILE.
+  const banner = `# DOWNLOADED FROM substitutarr - DO NOT SHARE THIS FILE.
 # It contains your per-instance HMAC secret in cleartext.
 # Generated for user ${userId} at ${new Date().toISOString()}.
 
 `;
 
-  return new NextResponse(banner + filled, {
+  // Prepend a UTF-8 BOM (0xEF 0xBB 0xBF). PowerShell 5.1 falls back to ANSI
+  // for BOM-less files which mangles any non-ASCII codepoint (em-dash, etc.).
+  // The BOM forces UTF-8 interpretation regardless of the system codepage.
+  const BOM = "﻿";
+
+  return new NextResponse(BOM + banner + filled, {
     status: 200,
     headers: {
-      "Content-Type": "application/octet-stream",
+      "Content-Type": "application/octet-stream; charset=utf-8",
       "Content-Disposition": `attachment; filename="post-dl.ps1"`,
       "Cache-Control": "no-store",
     },
