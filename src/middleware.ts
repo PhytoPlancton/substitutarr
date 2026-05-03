@@ -9,6 +9,7 @@ const isPublicRoute = createRouteMatcher([
   "/api/health(.*)",
   "/api/jellyfin/webhook(.*)", // HMAC-verified, not Clerk
   "/api/post-process(.*)", // HMAC-verified from the qBit Windows hook
+  "/api/setup/verify/callback(.*)", // HMAC-verified from the post-dl.ps1 -TestMode handshake
 ]);
 
 const clerkConfigured =

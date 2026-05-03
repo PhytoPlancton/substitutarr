@@ -15,6 +15,7 @@ import {
   Rss,
   KeyRound,
   Tv,
+  Sparkles,
 } from "lucide-react";
 import type { ComponentType } from "react";
 import { useT } from "@/lib/i18n/I18nProvider";
@@ -112,6 +113,11 @@ export function Sidebar({ authEnabled = true }: { authEnabled?: boolean }) {
     queryFn: async () => (await fetch("/api/health/services")).json(),
     refetchInterval: 30_000,
   });
+  const { data: setupStatus } = useQuery<{ setupComplete: boolean }>({
+    queryKey: ["setup-status"],
+    queryFn: async () => (await fetch("/api/setup/status")).json(),
+    refetchInterval: 60_000,
+  });
 
   const services = health?.services ?? {};
   const enabledIndexers = (indexers?.items ?? []).filter((i) => i.enabled !== false);
@@ -136,6 +142,22 @@ export function Sidebar({ authEnabled = true }: { authEnabled?: boolean }) {
       </div>
 
       <nav className="flex-1 flex flex-col">
+        {/* Setup wizard CTA — visible until the user finishes the wizard. After
+            that it's hidden but still reachable at /setup for re-runs. */}
+        {setupStatus && !setupStatus.setupComplete && (
+          <Link
+            href="/setup"
+            className={`relative flex items-center gap-3 px-3 py-2 rounded-md text-sm mb-3 border ${
+              path === "/setup" || path?.startsWith("/setup/")
+                ? "bg-accent/15 text-accent border-accent/40"
+                : "bg-amber-500/10 text-amber-300 border-amber-500/30 hover:bg-amber-500/15"
+            }`}
+          >
+            <Sparkles className="w-4 h-4" />
+            {t("setup.navLabel")}
+            <span className="ml-auto w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+          </Link>
+        )}
         {SECTIONS.map((section, sIdx) => (
           <div key={section.headerKey} className={sIdx === 0 ? "" : "mt-6"}>
             <div className="px-3 mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted/70">

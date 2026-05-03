@@ -20,24 +20,32 @@
   This script logs ERROR and exits if it detects a cross-volume layout.
 #>
 
-[CmdletBinding()]
+[CmdletBinding(DefaultParameterSetName='Run')]
 param(
-  [Parameter(Mandatory=$true)][string]$ContentPath,
-  [Parameter(Mandatory=$true)][string]$TorrentName,
-  [Parameter(Mandatory=$true)][string]$InfoHash,
-  [Parameter(Mandatory=$true)][string]$Category,
-  [Parameter(Mandatory=$false)][string]$Tags = "",
-  [Parameter(Mandatory=$false)][string]$RootPath = ""
+  [Parameter(ParameterSetName='Run',  Mandatory=$true)][string]$ContentPath,
+  [Parameter(ParameterSetName='Run',  Mandatory=$true)][string]$TorrentName,
+  [Parameter(ParameterSetName='Run',  Mandatory=$true)][string]$InfoHash,
+  [Parameter(ParameterSetName='Run',  Mandatory=$true)][string]$Category,
+  [Parameter(ParameterSetName='Run',  Mandatory=$false)][string]$Tags = "",
+  [Parameter(ParameterSetName='Run',  Mandatory=$false)][string]$RootPath = "",
+
+  # Test mode: pings substitutarr's verify-hook endpoint and exits without
+  # touching disk. Used by the setup wizard's "Verify hook" step.
+  [Parameter(ParameterSetName='Test', Mandatory=$true)][switch]$TestMode,
+  [Parameter(ParameterSetName='Test', Mandatory=$true)][string]$VerifyToken
 )
 
 # ============================================================================
-# 1. CONFIGURATION  (edit me)
+# 1. CONFIGURATION  — populated by the setup wizard at download time.
+#    Placeholders {{...}} are replaced server-side. If you see them literal in
+#    this file, you copied the template instead of the configured download.
 # ============================================================================
 $Config = @{
-  MoviesRoot      = 'D:\Jellyfin\Movies'
-  TvRoot          = 'D:\Jellyfin\TV'
-  SubstitutarrUrl = 'https://substitutarr.nmt.ovh/api/post-process'
-  HmacSecret      = $env:SUBSTITUTARR_HMAC_SECRET
+  MoviesRoot      = '{{MOVIES_ROOT}}'
+  TvRoot          = '{{TV_ROOT}}'
+  SubstitutarrUrl = '{{SUBSTITUTARR_URL}}/api/post-process'
+  VerifyHookUrl   = '{{SUBSTITUTARR_URL}}/api/setup/verify/callback'
+  HmacSecret      = '{{HMAC_SECRET}}'
   LogDir          = 'C:\substitutarr\logs'
   QueueDir        = 'C:\substitutarr\queue'
   LogRetainDays   = 30
@@ -45,6 +53,12 @@ $Config = @{
   VideoExt        = @('.mkv','.mp4','.avi','.ts','.mov','.m4v','.wmv')
   SubExt          = @('.srt','.ass','.ssa','.vtt','.sub','.idx')
   SkipPatterns    = @('*sample*','*proof*','*screens*','*RARBG*','*.nfo','*.txt','*.jpg','*.png','*.sfv','*.md5')
+}
+
+# Use machine-level env var as fallback if the placeholder wasn't substituted
+# (e.g. user copied the raw template by mistake).
+if ($Config.HmacSecret -eq '{{HMAC_SECRET}}' -and $env:SUBSTITUTARR_HMAC_SECRET) {
+  $Config.HmacSecret = $env:SUBSTITUTARR_HMAC_SECRET
 }
 
 # ============================================================================
@@ -57,7 +71,7 @@ $script:LogFile = Join-Path $Config.LogDir ("post-dl-{0}.log" -f (Get-Date -Form
 
 function Write-Log {
   param([string]$Level, [string]$Msg)
-  $hashShort = if ($InfoHash.Length -ge 8) { $InfoHash.Substring(0, 8) } else { $InfoHash }
+  $hashShort = if ($InfoHash -and $InfoHash.Length -ge 8) { $InfoHash.Substring(0, 8) } elseif ($InfoHash) { $InfoHash } else { 'verify' }
   $line = "{0} [{1}] [{2}] {3}" -f (Get-Date -Format 'o'), $Level, $hashShort, $Msg
   Add-Content -Path $script:LogFile -Value $line -Encoding UTF8
   if ($Level -in @('ERROR','WARN')) { Write-Host $line }
@@ -69,6 +83,35 @@ Get-ChildItem $Config.LogDir -Filter 'post-dl-*.log' -ErrorAction SilentlyContin
   Remove-Item -Force -ErrorAction SilentlyContinue
 
 try {
+
+# ============================================================================
+# 2.5  TEST MODE — handshake with the setup wizard, no disk action
+# ============================================================================
+if ($PSCmdlet.ParameterSetName -eq 'Test') {
+  Write-Log INFO "==> TEST MODE — verifyToken='$VerifyToken'"
+  if (-not $Config.HmacSecret -or $Config.HmacSecret -eq '{{HMAC_SECRET}}') {
+    Write-Log ERROR "HMAC secret not configured. Re-download the script from /setup."
+    Write-Host "ERROR: HMAC secret not configured. Re-download the script from /setup."
+    exit 1
+  }
+  $body = @{ verifyToken = $VerifyToken; ts = (Get-Date -Format 'o') } | ConvertTo-Json -Compress
+  $hmac = New-Object System.Security.Cryptography.HMACSHA256
+  $hmac.Key = [Text.Encoding]::UTF8.GetBytes($Config.HmacSecret)
+  $sig = -join (($hmac.ComputeHash([Text.Encoding]::UTF8.GetBytes($body))) | ForEach-Object { $_.ToString('x2') })
+  try {
+    $resp = Invoke-RestMethod -Uri $Config.VerifyHookUrl -Method POST `
+              -Body $body -ContentType 'application/json' `
+              -Headers @{ 'X-Substitutarr-Signature' = "sha256=$sig" } `
+              -TimeoutSec $Config.HttpTimeoutSec
+    Write-Log INFO "verify ack: $($resp | ConvertTo-Json -Compress)"
+    Write-Host "OK — substitutarr received the ping. You can close this window."
+    exit 0
+  } catch {
+    Write-Log ERROR "verify POST failed: $($_.Exception.Message)"
+    Write-Host "ERROR: $($_.Exception.Message)"
+    exit 1
+  }
+}
 
 Write-Log INFO "==> hook fired: name='$TorrentName' cat='$Category' path='$ContentPath'"
 

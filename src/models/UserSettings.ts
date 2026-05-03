@@ -21,6 +21,17 @@ const UserSettingsSchema = new Schema(
       tv: { type: String, default: "" },
       downloads: { type: String, default: "" },
     },
+    /**
+     * Library paths — where the post-DL hook hardlinks files (Jellyfin sees them here).
+     * Different from `paths` above: those are qBit save paths (download destination),
+     * these are library paths (final hardlink destination).
+     */
+    libraryPaths: {
+      movies: { type: String, default: "" },
+      tv: { type: String, default: "" },
+    },
+    /** First-run wizard completion. Null = wizard never completed → redirect to /setup. */
+    setupCompletedAt: { type: Date, default: null },
     quality: {
       preferred: { type: String, default: "1080p" },
       fallback: { type: String, default: "720p" },

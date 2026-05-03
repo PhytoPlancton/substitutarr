@@ -208,6 +208,29 @@ export class QBittorrent {
       });
     }
   }
+
+  /** List existing categories (returns map of name → savePath). */
+  async listCategories(): Promise<Record<string, { name: string; savePath: string }>> {
+    const res = await this.req("/api/v2/torrents/categories");
+    if (!res.ok) throw new Error(`qBit categories ${res.status}`);
+    return (await res.json()) as Record<string, { name: string; savePath: string }>;
+  }
+
+  /**
+   * Create a category. Idempotent — if it already exists with a different
+   * savePath, qBit silently overrides; if same, no-op.
+   * Pass empty `savePath` to leave it managed by qBit's default save path.
+   */
+  async createCategory(name: string, savePath = ""): Promise<void> {
+    const body = new URLSearchParams({ category: name, savePath });
+    const res = await this.req("/api/v2/torrents/createCategory", {
+      method: "POST",
+      body,
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    });
+    if (res.status === 409) return; // already exists, OK
+    if (!res.ok) throw new Error(`qBit createCategory ${res.status}: ${await res.text()}`);
+  }
 }
 
 export async function getUserQbit(userId: string): Promise<QBittorrent> {
