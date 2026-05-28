@@ -264,6 +264,15 @@ export const en: Messages = {
     categoriesOk: "Both categories created.",
     categoriesAlreadyOk: "Both categories are already there.",
     categoriesError: "Couldn't create categories — {detail}",
+    hookSimpleHeading: "You're all set — substitutarr handles imports natively",
+    hookSimpleBody:
+      "Once a torrent finishes in qBit, substitutarr's background sweep (every 15 min) does the hardlink + foldering itself. No PowerShell hook required.",
+    hookSimplePoint1: "Detects completed torrents in substitutarr-movies / substitutarr-tv categories",
+    hookSimplePoint2: "Hardlinks files into your library folders (parses SxxExx for TV)",
+    hookSimplePoint3: "Updates Jellyfin and notifies Discord automatically",
+    hookAdvancedToggle: "Want zero-latency imports? Configure the optional PowerShell hook (advanced)",
+    hookAdvancedBody:
+      "The PowerShell hook imports files the instant a torrent finishes (vs ~5 min for the cron). Useful if you watch right after grabbing.",
     hookHeading: "Post-download hook",
     hookBody:
       "When qBit finishes a torrent, this script hardlinks files into your Jellyfin library and tells substitutarr the download is done. We've pre-filled it with your paths and HMAC secret.",
@@ -588,6 +597,15 @@ export const fr: Messages = {
     categoriesOk: "Les 2 catégories sont créées.",
     categoriesAlreadyOk: "Les 2 catégories existent déjà.",
     categoriesError: "Création impossible — {detail}",
+    hookSimpleHeading: "C'est bon — substitutarr gère les imports nativement",
+    hookSimpleBody:
+      "Quand qBit finit un torrent, le sweep substitutarr (toutes les 15 min) fait le hardlink + le foldering lui-même. Plus besoin de hook PowerShell.",
+    hookSimplePoint1: "Détecte les torrents complets dans les catégories substitutarr-movies / substitutarr-tv",
+    hookSimplePoint2: "Hardlink les fichiers vers ta library (parse SxxExx pour les séries)",
+    hookSimplePoint3: "Rafraîchit Jellyfin et notifie Discord automatiquement",
+    hookAdvancedToggle: "Tu veux des imports zéro-latence ? Configure le hook PowerShell optionnel (avancé)",
+    hookAdvancedBody:
+      "Le hook PowerShell importe les fichiers à l'instant où le torrent finit (vs ~5 min via le cron). Utile si tu mates juste après avoir lancé un grab.",
     hookHeading: "Hook post-download",
     hookBody:
       "Quand qBit finit un torrent, ce script hardlink les fichiers dans ta library Jellyfin et notifie substitutarr. On l'a pré-rempli avec tes paths et ton secret HMAC.",

@@ -483,183 +483,77 @@ function HookStep({ onDone, onBack }: { onDone: () => void; onBack: () => void }
   const t = useT();
   const installPath = "C:\\substitutarr\\post-dl.ps1";
   const qbCommand = `powershell.exe -ExecutionPolicy Bypass -File "${installPath}" "%F" "%N" "%I" "%L" "%G" "%R"`;
-  const [copied, setCopied] = useState<"qb" | "verify" | null>(null);
-  const [verify, setVerify] = useState<{
-    token?: string;
-    command?: string;
-    status?: "idle" | "waiting" | "ok" | "expired" | "error";
-    secondsLeft?: number;
-    err?: string;
-  }>({ status: "idle" });
+  const [copied, setCopied] = useState<"qb" | null>(null);
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
-  const copy = async (text: string, kind: "qb" | "verify") => {
+  const copy = async (text: string, kind: "qb") => {
     await navigator.clipboard.writeText(text);
     setCopied(kind);
     setTimeout(() => setCopied(null), 1500);
   };
 
-  const startVerify = async () => {
-    setVerify({ status: "idle" });
-    const res = await fetch("/api/setup/verify/start", { method: "POST" });
-    const data = await res.json();
-    setVerify({
-      token: data.token,
-      command: data.command,
-      status: "waiting",
-      secondsLeft: data.ttlSeconds ?? 90,
-    });
-  };
-
-  // Poll for the ping while waiting
-  useEffect(() => {
-    if (verify.status !== "waiting" || !verify.token) return;
-    const tick = setInterval(async () => {
-      // Decrement countdown
-      setVerify((v) => ({ ...v, secondsLeft: Math.max(0, (v.secondsLeft ?? 0) - 1) }));
-      const r = await fetch(`/api/setup/verify/poll?token=${verify.token}`);
-      const data = await r.json();
-      if (data.status === "ok") {
-        clearInterval(tick);
-        setVerify((v) => ({ ...v, status: "ok" }));
-      } else if (data.status === "expired") {
-        clearInterval(tick);
-        setVerify((v) => ({ ...v, status: "expired" }));
-      }
-    }, 1000);
-    return () => clearInterval(tick);
-  }, [verify.status, verify.token]);
-
   return (
     <div className="space-y-4">
       <Card>
-        <h2 className="text-xl font-semibold mb-2">{t("setup.hookHeading")}</h2>
-        <p className="text-sm text-muted">{t("setup.hookBody")}</p>
-      </Card>
-
-      <Card>
         <div className="flex items-start gap-3">
-          <div className="w-8 h-8 rounded-full bg-accent/15 text-accent flex items-center justify-center text-sm font-medium shrink-0">
-            1
+          <div className="w-10 h-10 rounded-full bg-emerald-500/15 text-emerald-400 flex items-center justify-center shrink-0">
+            <Check className="w-5 h-5" />
           </div>
           <div className="flex-1">
-            <h3 className="font-medium mb-1">{t("setup.hookCard1Title")}</h3>
-            <p className="text-sm text-muted mb-3">{t("setup.hookCard1Body")}</p>
-            <a
-              href="/api/setup/post-dl-script"
-              download="post-dl.ps1"
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-accent text-white text-sm font-medium hover:bg-accent/90"
-            >
-              <Download className="w-4 h-4" />
-              {t("setup.hookCard1Action")}
-            </a>
+            <h2 className="text-xl font-semibold mb-2">{t("setup.hookSimpleHeading")}</h2>
+            <p className="text-sm text-muted mb-3">{t("setup.hookSimpleBody")}</p>
+            <ul className="text-sm text-muted space-y-1.5 list-disc pl-5">
+              <li>{t("setup.hookSimplePoint1")}</li>
+              <li>{t("setup.hookSimplePoint2")}</li>
+              <li>{t("setup.hookSimplePoint3")}</li>
+            </ul>
           </div>
         </div>
       </Card>
 
-      <Card>
-        <div className="flex items-start gap-3">
-          <div className="w-8 h-8 rounded-full bg-accent/15 text-accent flex items-center justify-center text-sm font-medium shrink-0">
-            2
-          </div>
-          <div className="flex-1">
-            <h3 className="font-medium mb-1">{t("setup.hookCard2Title")}</h3>
-            <p className="text-sm text-muted mb-3">
-              {t("setup.hookCard2Body", { path: installPath })}
-            </p>
-            <code className="block bg-bg border border-border rounded-md px-3 py-2 text-sm font-mono">
-              {installPath}
-            </code>
-          </div>
-        </div>
-      </Card>
+      <div className="bg-surface border border-border rounded-lg">
+        <button
+          onClick={() => setShowAdvanced(!showAdvanced)}
+          className="w-full px-5 py-3 text-left text-sm text-muted hover:text-white flex items-center justify-between"
+        >
+          <span>{t("setup.hookAdvancedToggle")}</span>
+          <span className="text-xs">{showAdvanced ? "−" : "+"}</span>
+        </button>
+        {showAdvanced && (
+          <div className="px-5 pb-5 space-y-4 border-t border-border pt-4">
+            <p className="text-xs text-muted">{t("setup.hookAdvancedBody")}</p>
 
-      <Card>
-        <div className="flex items-start gap-3">
-          <div className="w-8 h-8 rounded-full bg-accent/15 text-accent flex items-center justify-center text-sm font-medium shrink-0">
-            3
-          </div>
-          <div className="flex-1">
-            <h3 className="font-medium mb-1">{t("setup.hookCard3Title")}</h3>
-            <p className="text-sm text-muted mb-3">{t("setup.hookCard3Body")}</p>
-            <div className="relative">
-              <pre className="bg-bg border border-border rounded-md px-3 py-2 text-xs font-mono overflow-x-auto pr-20">
-                {qbCommand}
-              </pre>
-              <button
-                onClick={() => copy(qbCommand, "qb")}
-                className="absolute top-2 right-2 px-2 py-1 text-xs rounded bg-surface border border-border hover:bg-white/5 flex items-center gap-1"
+            <div>
+              <h4 className="text-xs uppercase text-muted/70 mb-2">1. {t("setup.hookCard1Title")}</h4>
+              <a
+                href="/api/setup/post-dl-script"
+                download="post-dl.ps1"
+                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md border border-border text-xs hover:bg-white/5"
               >
-                <Copy className="w-3 h-3" />
-                {copied === "qb" ? t("setup.hookCard3Copied") : t("setup.hookCard3Copy")}
-              </button>
+                <Download className="w-3 h-3" />
+                {t("setup.hookCard1Action")}
+              </a>
+              <p className="text-xs text-muted mt-2">{t("setup.hookCard2Body", { path: installPath })}</p>
             </div>
-          </div>
-        </div>
-      </Card>
 
-      <Card>
-        <div className="flex items-start gap-3">
-          <div className="w-8 h-8 rounded-full bg-accent/15 text-accent flex items-center justify-center text-sm font-medium shrink-0">
-            4
-          </div>
-          <div className="flex-1">
-            <h3 className="font-medium mb-1">{t("setup.hookVerifyHeading")}</h3>
-            <p className="text-sm text-muted mb-3">{t("setup.hookVerifyBody")}</p>
-
-            {verify.status === "idle" && (
-              <button
-                onClick={startVerify}
-                className="px-4 py-2 rounded-md border border-border text-sm hover:bg-white/5"
-              >
-                {t("setup.hookVerifyStart")}
-              </button>
-            )}
-
-            {verify.status === "waiting" && verify.command && (
-              <div>
-                <div className="relative mb-3">
-                  <pre className="bg-bg border border-border rounded-md px-3 py-2 text-xs font-mono overflow-x-auto pr-20">
-                    {verify.command}
-                  </pre>
-                  <button
-                    onClick={() => copy(verify.command!, "verify")}
-                    className="absolute top-2 right-2 px-2 py-1 text-xs rounded bg-surface border border-border hover:bg-white/5 flex items-center gap-1"
-                  >
-                    <Copy className="w-3 h-3" />
-                    {copied === "verify" ? t("setup.hookCard3Copied") : t("setup.hookCard3Copy")}
-                  </button>
-                </div>
-                <div className="flex items-center gap-2 text-sm text-amber-400">
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  {t("setup.hookVerifyWaiting", { seconds: String(verify.secondsLeft ?? 90) })}
-                </div>
-              </div>
-            )}
-
-            {verify.status === "ok" && (
-              <div className="flex items-center gap-2 text-sm text-emerald-400">
-                <Check className="w-4 h-4" />
-                {t("setup.hookVerifyOk")}
-              </div>
-            )}
-
-            {verify.status === "expired" && (
-              <div className="space-y-2">
-                <div className="flex items-center gap-2 text-sm text-rose-400">
-                  <CircleAlert className="w-4 h-4" />
-                  {t("setup.hookVerifyExpired")}
-                </div>
+            <div>
+              <h4 className="text-xs uppercase text-muted/70 mb-2">2. {t("setup.hookCard3Title")}</h4>
+              <div className="relative">
+                <pre className="bg-bg border border-border rounded-md px-3 py-2 text-xs font-mono overflow-x-auto pr-20">
+                  {qbCommand}
+                </pre>
                 <button
-                  onClick={startVerify}
-                  className="px-3 py-1.5 rounded-md border border-border text-xs hover:bg-white/5"
+                  onClick={() => copy(qbCommand, "qb")}
+                  className="absolute top-2 right-2 px-2 py-1 text-xs rounded bg-surface border border-border hover:bg-white/5 flex items-center gap-1"
                 >
-                  {t("setup.retry")}
+                  <Copy className="w-3 h-3" />
+                  {copied === "qb" ? t("setup.hookCard3Copied") : t("setup.hookCard3Copy")}
                 </button>
               </div>
-            )}
+            </div>
           </div>
-        </div>
-      </Card>
+        )}
+      </div>
 
       <div className="flex justify-between">
         <button
@@ -670,8 +564,7 @@ function HookStep({ onDone, onBack }: { onDone: () => void; onBack: () => void }
         </button>
         <button
           onClick={onDone}
-          disabled={verify.status !== "ok"}
-          className="px-4 py-2 rounded-md bg-accent text-white font-medium hover:bg-accent/90 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="px-4 py-2 rounded-md bg-accent text-white font-medium hover:bg-accent/90"
         >
           {t("setup.next")}
         </button>

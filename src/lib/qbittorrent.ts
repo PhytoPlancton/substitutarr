@@ -149,6 +149,7 @@ export class QBittorrent {
     const arr = (await res.json()) as Array<{
       hash: string;
       name: string;
+      category: string;
       progress: number;
       state: string;
       size: number;

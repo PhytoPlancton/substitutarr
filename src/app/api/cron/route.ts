@@ -7,6 +7,7 @@ import { getUserQbit } from "@/lib/qbittorrent";
 import { getUserJellyfin } from "@/lib/jellyfin";
 import { acquireCronLock, releaseCronLock } from "@/lib/cron-lock";
 import { recordHealth } from "@/lib/connection-health";
+import { importCompletedTorrent } from "@/lib/post-import";
 import { log } from "@/lib/logger";
 
 export const runtime = "nodejs";
@@ -52,7 +53,6 @@ async function sweep(): Promise<{
         void recordHealth({ userId, service: "qbit", ok: true, detail: "reconcile ok" });
         const byHash = new Map(torrents.map((t) => [t.hash.toLowerCase(), t]));
 
-        let didComplete = false;
         for (const d of active) {
           const t = d.qbHash ? byHash.get(d.qbHash.toLowerCase()) : undefined;
           if (!t) {
@@ -64,24 +64,47 @@ async function sweep(): Promise<{
             continue;
           }
           if (t.progress >= 1 || /^(uploading|stalledUP|forcedUP|pausedUP)$/.test(t.state)) {
-            await Download.updateOne(
-              { _id: d._id },
-              { $set: { state: "completed", progress: 1, importedPath: t.content_path } },
-            );
-            await Media.updateOne({ _id: d.mediaId, userId }, { $set: { status: "downloaded" } });
-            reconciled++;
-            didComplete = true;
+            // Radarr-style import: substitutarr does the hardlink + foldering itself
+            // here. The PowerShell hook is no longer required — but if the user has
+            // it configured, /api/post-process is idempotent and they coexist.
+            const category = (t as any).category as string | undefined;
+            if (category?.startsWith("substitutarr-") && t.content_path) {
+              try {
+                const r = await importCompletedTorrent({
+                  userId,
+                  downloadId: d._id.toString(),
+                  contentPath: t.content_path,
+                  category,
+                  torrentName: t.name,
+                });
+                if (r.ok) {
+                  reconciled++;
+                } else {
+                  errors.push(`import ${t.name}: ${r.error}`);
+                  // Still flip the DB state so we don't retry the import forever
+                  await Download.updateOne(
+                    { _id: d._id },
+                    { $set: { state: "completed", progress: 1, importedPath: t.content_path } },
+                  );
+                }
+              } catch (e: any) {
+                errors.push(`import ${t.name}: ${e.message}`);
+              }
+            } else {
+              // No category match → just flip DB state, don't touch disk
+              await Download.updateOne(
+                { _id: d._id },
+                { $set: { state: "completed", progress: 1, importedPath: t.content_path } },
+              );
+              await Media.updateOne({ _id: d.mediaId, userId }, { $set: { status: "downloaded" } });
+              reconciled++;
+            }
           } else {
             await Download.updateOne(
               { _id: d._id },
               { $set: { progress: t.progress, state: "downloading", seeders: undefined } },
             );
           }
-        }
-
-        if (didComplete) {
-          const jf = await getUserJellyfin(userId);
-          if (jf) await jf.refreshAll().catch((e) => errors.push(`jellyfin: ${e.message}`));
         }
       } catch (e: any) {
         void recordHealth({ userId, service: "qbit", ok: false, detail: e.message });
