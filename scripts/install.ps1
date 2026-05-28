@@ -26,8 +26,23 @@
     powershell.exe -ExecutionPolicy Bypass -File install.ps1
 #>
 
-$ErrorActionPreference = 'Stop'
+# Native commands like git/npm/winget often write progress text to stderr.
+# With EAP=Stop, PowerShell 5.1 treats that as a terminating NativeCommandError.
+# We keep EAP=Continue here and check $LASTEXITCODE manually after each native call.
+$ErrorActionPreference = 'Continue'
 $ProgressPreference = 'SilentlyContinue'  # silences winget/Invoke-WebRequest progress bars in iex piping
+
+function Invoke-Native {
+  param(
+    [Parameter(Mandatory)][scriptblock]$Script,
+    [string]$ErrorMessage = "command failed"
+  )
+  # Merge stderr into stdout, swallow both. Throw only on non-zero exit code.
+  & $Script *>&1 | Out-Null
+  if ($LASTEXITCODE -ne 0) {
+    throw "$ErrorMessage (exit $LASTEXITCODE)"
+  }
+}
 
 function Write-Banner($Text) {
   Write-Host ""
@@ -106,25 +121,25 @@ Write-Ok "winget"
 
 if (-not (Test-Command git)) {
   Write-Warn "git missing - installing via winget..."
-  winget install --id Git.Git -e --silent --accept-package-agreements --accept-source-agreements | Out-Null
+  & winget install --id Git.Git -e --silent --accept-package-agreements --accept-source-agreements *>&1 | Out-Null
   Refresh-Path
   if (-not (Test-Command git)) {
     Write-Err "git install failed. Close this window, reopen, re-run the installer."
     exit 1
   }
 }
-Write-Ok "git $(git --version)"
+Write-Ok "git $(& git --version)"
 
 if (-not (Test-Command node)) {
   Write-Warn "Node.js missing - installing LTS via winget..."
-  winget install --id OpenJS.NodeJS.LTS -e --silent --accept-package-agreements --accept-source-agreements | Out-Null
+  & winget install --id OpenJS.NodeJS.LTS -e --silent --accept-package-agreements --accept-source-agreements *>&1 | Out-Null
   Refresh-Path
   if (-not (Test-Command node)) {
     Write-Err "Node.js install failed. Close this window, reopen, re-run the installer."
     exit 1
   }
 }
-$nodeVer = (node --version)
+$nodeVer = (& node --version)
 Write-Ok "Node.js $nodeVer"
 
 # Allow signed local scripts so npm.ps1 works
@@ -168,13 +183,18 @@ if ($isUpdate) {
 # 3. CLONE OR PULL
 # ============================================================================
 Write-Banner "Fetching substitutarr"
-if ($isUpdate) {
-  Push-Location $appDir
-  git fetch origin --quiet
-  git reset --hard origin/main --quiet
-  Pop-Location
-} else {
-  git clone --depth 1 https://github.com/PhytoPlancton/substitutarr.git $appDir 2>&1 | Out-Null
+try {
+  if ($isUpdate) {
+    Push-Location $appDir
+    Invoke-Native { & git fetch origin --quiet } "git fetch failed"
+    Invoke-Native { & git reset --hard origin/main --quiet } "git reset failed"
+    Pop-Location
+  } else {
+    Invoke-Native { & git clone --depth 1 https://github.com/PhytoPlancton/substitutarr.git $appDir } "git clone failed"
+  }
+} catch {
+  Write-Err $_.Exception.Message
+  exit 1
 }
 Write-Ok "code at $appDir"
 
@@ -256,13 +276,13 @@ Write-Ok ".env.local written"
 # ============================================================================
 Write-Banner "Installing dependencies (this is the slow part - ~1-3 min)"
 Push-Location $appDir
-& npm install --no-audit --no-fund --silent 2>&1 | Out-Null
+& npm install --no-audit --no-fund --silent *>&1 | Out-Null
 if ($LASTEXITCODE -ne 0) { Pop-Location; Write-Err "npm install failed"; exit 1 }
 Write-Ok "$(((Get-ChildItem 'node_modules' -ErrorAction SilentlyContinue) | Measure-Object).Count) packages installed"
 
 Write-Banner "Building production bundle"
-& npm run build 2>&1 | Out-Null
-if ($LASTEXITCODE -ne 0) { Pop-Location; Write-Err "npm run build failed - run 'npm run build' manually to see the error"; exit 1 }
+& npm run build *>&1 | Out-Null
+if ($LASTEXITCODE -ne 0) { Pop-Location; Write-Err "npm run build failed - cd $appDir then run 'npm run build' manually to see the error"; exit 1 }
 Write-Ok "build complete"
 Pop-Location
 
@@ -271,7 +291,7 @@ Pop-Location
 # ============================================================================
 Write-Banner "Installing service manager (PM2)"
 if (-not (Test-Command pm2)) {
-  & npm install -g pm2 pm2-windows-startup --silent 2>&1 | Out-Null
+  & npm install -g pm2 pm2-windows-startup --silent *>&1 | Out-Null
 }
 Write-Ok "pm2"
 
@@ -291,16 +311,16 @@ module.exports = {
 "@ | Set-Content -LiteralPath $ecoFile -Encoding UTF8
 
 # Restart cleanly if already running, else fresh start
-& pm2 delete substitutarr 2>&1 | Out-Null
+& pm2 delete substitutarr *>&1 | Out-Null
 Push-Location $appDir
-& pm2 start ecosystem.config.cjs 2>&1 | Out-Null
-& pm2 save 2>&1 | Out-Null
+& pm2 start ecosystem.config.cjs *>&1 | Out-Null
+& pm2 save *>&1 | Out-Null
 Pop-Location
 Write-Ok "substitutarr running on http://127.0.0.1:$port"
 
 # pm2-startup is interactive on Windows; only run once on fresh installs
 if (-not $isUpdate -and (Test-Command pm2-startup)) {
-  & pm2-startup install 2>&1 | Out-Null
+  & pm2-startup install *>&1 | Out-Null
   Write-Ok "PM2 auto-starts at boot"
 }
 
