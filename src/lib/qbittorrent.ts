@@ -232,6 +232,27 @@ export class QBittorrent {
     if (res.status === 409) return; // already exists, OK
     if (!res.ok) throw new Error(`qBit createCategory ${res.status}: ${await res.text()}`);
   }
+
+  /** Read qBit's runtime preferences (autorun, save_path, queue limits, etc). */
+  async getPreferences(): Promise<Record<string, any>> {
+    const res = await this.req("/api/v2/app/preferences");
+    if (!res.ok) throw new Error(`qBit preferences ${res.status}`);
+    return (await res.json()) as Record<string, any>;
+  }
+
+  /**
+   * Patch qBit's preferences. Only sends keys actually present in `patch`.
+   * Body must be a JSON-encoded form field named "json" - that's qBit's API contract.
+   */
+  async setPreferences(patch: Record<string, any>): Promise<void> {
+    const body = new URLSearchParams({ json: JSON.stringify(patch) });
+    const res = await this.req("/api/v2/app/setPreferences", {
+      method: "POST",
+      body,
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    });
+    if (!res.ok) throw new Error(`qBit setPreferences ${res.status}: ${await res.text()}`);
+  }
 }
 
 export async function getUserQbit(userId: string): Promise<QBittorrent> {

@@ -486,6 +486,37 @@ function HookStep({ onDone, onBack }: { onDone: () => void; onBack: () => void }
   const [copied, setCopied] = useState<"qb" | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
 
+  // Instant import toggle (Radarr-tier 1s latency via qBit autorun -> /api/qbit-finished)
+  const [instantStatus, setInstantStatus] = useState<"unknown" | "off" | "on">("unknown");
+  const [instantBusy, setInstantBusy] = useState(false);
+  const [instantError, setInstantError] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch("/api/setup/qbit-autorun")
+      .then((r) => r.json())
+      .then((d) => setInstantStatus(d.enabled ? "on" : "off"))
+      .catch(() => setInstantStatus("unknown"));
+  }, []);
+
+  const toggleInstant = async (enable: boolean) => {
+    setInstantBusy(true);
+    setInstantError(null);
+    try {
+      const res = await fetch("/api/setup/qbit-autorun", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: enable }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "failed");
+      setInstantStatus(enable ? "on" : "off");
+    } catch (e: any) {
+      setInstantError(e.message);
+    } finally {
+      setInstantBusy(false);
+    }
+  };
+
   const copy = async (text: string, kind: "qb") => {
     await navigator.clipboard.writeText(text);
     setCopied(kind);
@@ -508,6 +539,35 @@ function HookStep({ onDone, onBack }: { onDone: () => void; onBack: () => void }
               <li>{t("setup.hookSimplePoint3")}</li>
             </ul>
           </div>
+        </div>
+      </Card>
+
+      {/* Instant imports — opt-in zero-latency via qBit autorun */}
+      <Card>
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex-1">
+            <h3 className="font-medium mb-1">{t("setup.hookInstantHeading")}</h3>
+            <p className="text-sm text-muted">{t("setup.hookInstantBody")}</p>
+            {instantError && (
+              <div className="text-xs text-rose-400 mt-2 flex items-center gap-1.5">
+                <CircleAlert className="w-3.5 h-3.5" />
+                {instantError}
+              </div>
+            )}
+          </div>
+          <button
+            onClick={() => toggleInstant(instantStatus !== "on")}
+            disabled={instantBusy || instantStatus === "unknown"}
+            className={`shrink-0 w-12 h-7 rounded-full p-1 transition-colors ${
+              instantStatus === "on" ? "bg-accent" : "bg-border"
+            } ${instantBusy ? "opacity-50 cursor-not-allowed" : ""}`}
+          >
+            <div
+              className={`w-5 h-5 rounded-full bg-white transition-transform ${
+                instantStatus === "on" ? "translate-x-5" : ""
+              }`}
+            />
+          </button>
         </div>
       </Card>
 

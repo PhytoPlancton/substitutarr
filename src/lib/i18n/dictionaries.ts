@@ -270,7 +270,10 @@ export const en: Messages = {
     hookSimplePoint1: "Detects completed torrents in substitutarr-movies / substitutarr-tv categories",
     hookSimplePoint2: "Hardlinks files into your library folders (parses SxxExx for TV)",
     hookSimplePoint3: "Updates Jellyfin and notifies Discord automatically",
-    hookAdvancedToggle: "Want zero-latency imports? Configure the optional PowerShell hook (advanced)",
+    hookInstantHeading: "Instant imports",
+    hookInstantBody:
+      "Skip the 60s wait. When ON, substitutarr configures qBit (via its API) to call back the second a torrent finishes. Files land in Jellyfin within a second. Toggle off to fall back to polling.",
+    hookAdvancedToggle: "Want the legacy PowerShell hook instead? (advanced)",
     hookAdvancedBody:
       "The PowerShell hook imports files the instant a torrent finishes (vs ~5 min for the cron). Useful if you watch right after grabbing.",
     hookHeading: "Post-download hook",
@@ -603,7 +606,10 @@ export const fr: Messages = {
     hookSimplePoint1: "Détecte les torrents complets dans les catégories substitutarr-movies / substitutarr-tv",
     hookSimplePoint2: "Hardlink les fichiers vers ta library (parse SxxExx pour les séries)",
     hookSimplePoint3: "Rafraîchit Jellyfin et notifie Discord automatiquement",
-    hookAdvancedToggle: "Tu veux des imports zéro-latence ? Configure le hook PowerShell optionnel (avancé)",
+    hookInstantHeading: "Imports instantanés",
+    hookInstantBody:
+      "Skip les 60s d'attente. Quand activé, substitutarr configure qBit (via son API) pour qu'il appelle directement substitutarr à la seconde où un torrent finit. Les fichiers arrivent dans Jellyfin en ~1s. Désactive pour revenir au polling.",
+    hookAdvancedToggle: "Tu veux l'ancien hook PowerShell à la place ? (avancé)",
     hookAdvancedBody:
       "Le hook PowerShell importe les fichiers à l'instant où le torrent finit (vs ~5 min via le cron). Utile si tu mates juste après avoir lancé un grab.",
     hookHeading: "Hook post-download",
