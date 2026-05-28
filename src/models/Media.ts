@@ -137,6 +137,17 @@ const MediaSchema = new Schema(
     addedAt: { type: Date, default: Date.now },
     lastSearchedAt: Date,
     lastTmdbRefreshAt: Date,
+
+    // ---- Retention (auto-delete) ----
+    /** User opted this item out of retention permanently. */
+    retentionExcluded: { type: Boolean, default: false },
+    /** Temporary exclusion (e.g. 6 months) after the user clicked "Keep this" in the Discord ping. */
+    retentionExcludedUntil: { type: Date, default: null },
+    /** A retention notice is scheduled — `pendingDeletionAt` is when the cron will actually delete. */
+    retentionPendingAt: { type: Date, default: null },
+    retentionPendingReason: String,
+    /** Set when the cron deleted the file. Lets the user "restore" by flipping monitored back on. */
+    retentionDeletedAt: { type: Date, default: null },
   },
   { timestamps: true },
 );

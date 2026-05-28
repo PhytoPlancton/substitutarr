@@ -16,6 +16,7 @@ import {
   KeyRound,
   Tv,
   Sparkles,
+  Trash2,
 } from "lucide-react";
 import type { ComponentType } from "react";
 import { useT } from "@/lib/i18n/I18nProvider";
@@ -81,6 +82,7 @@ const SECTIONS: Section[] = [
         },
       },
       { href: "/settings/paths", labelKey: "nav.paths", icon: FolderTree },
+      { href: "/settings/retention", labelKey: "nav.retention", icon: Trash2 },
       { href: "/settings/api-keys", labelKey: "nav.apiKeys", icon: KeyRound },
     ],
   },

@@ -38,6 +38,80 @@ export class Jellyfin {
     });
     if (!res.ok && res.status !== 204) throw new Error(`Jellyfin refresh ${res.status}`);
   }
+
+  /** Resolve a Jellyfin userId — retention uses the first non-disabled user. */
+  async getDefaultUserId(): Promise<string | null> {
+    try {
+      const res = await fetch(this.base("/Users"), { headers: this.headers() });
+      if (!res.ok) return null;
+      const users: any[] = await res.json();
+      const u = users.find((u) => !u.Policy?.IsDisabled) ?? users[0];
+      return u?.Id ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Fetch playback metadata for the whole library at once. Filtered by provider
+   * (TMDB) so we can pivot the result by tmdbId. Cheap: ~1 round-trip even with
+   * 1000+ items.
+   */
+  async getUserDataByTmdbId(userId: string): Promise<
+    Map<
+      number,
+      {
+        played: boolean;
+        playCount: number;
+        lastPlayedDate?: string;
+        isFavorite: boolean;
+        type: "Movie" | "Series" | "Episode";
+      }
+    >
+  > {
+    const params = new URLSearchParams({
+      Recursive: "true",
+      IncludeItemTypes: "Movie,Series,Episode",
+      Fields: "ProviderIds,UserData",
+      EnableUserData: "true",
+    });
+    const res = await fetch(this.base(`/Users/${userId}/Items?${params}`), {
+      headers: this.headers(),
+    });
+    if (!res.ok) throw new Error(`Jellyfin user items ${res.status}`);
+    const data = (await res.json()) as { Items?: any[] };
+    const out = new Map<number, any>();
+    for (const it of data.Items ?? []) {
+      const tmdb = it.ProviderIds?.Tmdb ?? it.ProviderIds?.tmdb;
+      const tmdbId = tmdb ? Number(tmdb) : NaN;
+      if (!tmdbId || Number.isNaN(tmdbId)) continue;
+      const ud = it.UserData ?? {};
+      // Aggregate at the series level for episodes: keep the most-recently played per tmdbId
+      const prev = out.get(tmdbId);
+      const entry = {
+        played: !!ud.Played,
+        playCount: ud.PlayCount ?? 0,
+        lastPlayedDate: ud.LastPlayedDate ?? undefined,
+        isFavorite: !!ud.IsFavorite,
+        type: it.Type as "Movie" | "Series" | "Episode",
+      };
+      if (!prev) {
+        out.set(tmdbId, entry);
+      } else {
+        // Prefer most-recent LastPlayedDate, max PlayCount, OR favorite override
+        const cmp = (a?: string, b?: string) => (a && b ? new Date(a).getTime() - new Date(b).getTime() : a ? 1 : -1);
+        out.set(tmdbId, {
+          played: prev.played || entry.played,
+          playCount: Math.max(prev.playCount, entry.playCount),
+          lastPlayedDate:
+            cmp(entry.lastPlayedDate, prev.lastPlayedDate) > 0 ? entry.lastPlayedDate : prev.lastPlayedDate,
+          isFavorite: prev.isFavorite || entry.isFavorite,
+          type: prev.type === "Series" ? prev.type : entry.type,
+        });
+      }
+    }
+    return out;
+  }
 }
 
 export async function getUserJellyfin(userId: string): Promise<Jellyfin | null> {

@@ -32,6 +32,39 @@ const UserSettingsSchema = new Schema(
     },
     /** First-run wizard completion. Null = wizard never completed → redirect to /setup. */
     setupCompletedAt: { type: Date, default: null },
+
+    /**
+     * Auto-deletion / retention. Default mode is "off" — feature is fully opt-in.
+     * Activation flow:
+     *   off → dry_run (7-day cool-down) → active
+     * The cron blocks direct off → active transitions on the backend.
+     */
+    retention: {
+      mode: { type: String, enum: ["off", "dry_run", "active"], default: "off" },
+      activatedAt: { type: Date, default: null },
+      dryRunStartedAt: { type: Date, default: null },
+      thresholds: {
+        /** Days since `addedAt` with PlayCount === 0 → candidate. */
+        notWatchedSinceImportDays: { type: Number, default: 90 },
+        /** Days since `LastPlayedDate` with PlayCount >= 1 → candidate. */
+        watchedLongAgoDays: { type: Number, default: 180 },
+        /** Days since LastPlayedDate of the last episode of an "ended" TV show. */
+        tvEndedBingedDays: { type: Number, default: 120 },
+        /** Disk usage percentage on the library volume that triggers LRU sweep. */
+        diskPressurePercent: { type: Number, default: 85 },
+      },
+      /** Hard cap on deletions per cron run — limit blast radius if anything goes wrong. */
+      maxDeletionsPerDay: { type: Number, default: 10 },
+      /** Lead time for the Discord pre-deletion ping (hours). */
+      preDeleteNoticeHours: { type: Number, default: 24 },
+      lastRunAt: { type: Date, default: null },
+      lastRunSummary: {
+        candidates: { type: Number, default: 0 },
+        deleted: { type: Number, default: 0 },
+        bytesFreed: { type: Number, default: 0 },
+        skippedReason: String,
+      },
+    },
     quality: {
       preferred: { type: String, default: "1080p" },
       fallback: { type: String, default: "720p" },
