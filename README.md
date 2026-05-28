@@ -73,6 +73,26 @@ User adds a movie · substitutarr queries every enabled indexer in parallel · p
 
 ## Quick start
 
+### Windows — one line (3 minutes, ~zero clicks)
+
+Open PowerShell and paste:
+
+```powershell
+irm https://raw.githubusercontent.com/PhytoPlancton/substitutarr/main/scripts/install.ps1 | iex
+```
+
+The installer:
+- installs Node.js + Git via winget if missing
+- clones the repo to the drive with the most free space
+- prompts you for **2 things only** (MongoDB URI, TMDB v4 token), generates the rest
+- builds, installs PM2 as a Windows service that auto-starts at boot
+- schedules the 4 background jobs (sweep, disk-reconcile, retention, webhooks)
+- opens your browser on the setup wizard
+
+Re-running the same one-liner upgrades an existing install in place.
+
+### Manual / Linux / Mac
+
 ```bash
 git clone https://github.com/PhytoPlancton/substitutarr
 cd substitutarr
