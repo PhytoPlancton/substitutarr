@@ -82,4 +82,20 @@ export const PROFILE_PRESETS = [
       seedersBonus: 25,
     },
   },
+  {
+    // Safety-net profile used as the last hop in the fallback chain. Designed to
+    // catch ANY working release rather than return zero. FrankeinStream's shadow
+    // run found 2/46 failures where stricter profiles filtered everything out —
+    // this profile should pick up those cases without compromising the higher-
+    // tier defaults.
+    name: "Fallback - Last Resort",
+    description: "Filet de sécurité · accepte n'importe quelle release plutôt que d'échouer · pas de filtre langue ni résolution min.",
+    appliesTo: "both",
+    isDefault: false,
+    filters: {
+      minSeeders: 1,
+      // No minResolution, no requireLanguages, no maxSizeMB — anything goes.
+      // The scoring still ranks the best release first; this only opens the gate.
+    },
+  },
 ] as const;

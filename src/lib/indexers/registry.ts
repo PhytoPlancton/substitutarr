@@ -69,7 +69,10 @@ export async function searchAll(
   const titleSet = new Set<string>();
   for (const v of queryVariants(input.title)) titleSet.add(v);
   for (const alt of input.altTitles ?? []) for (const v of queryVariants(alt)) titleSet.add(v);
-  const titlesToTry = [...titleSet].slice(0, 4); // cap to avoid hammering indexers
+  // Cap = 8 (was 4): FrankeinStream's shadow run found 16/46 failures where
+  // the right variant wasn't in the first 4. Trackers handle 8 queries fine,
+  // and dedupe makes most variants free (same query merges).
+  const titlesToTry = [...titleSet].slice(0, 8);
 
   const errors: SearchAllResult["errors"] = [];
   const raw: Release[] = [];

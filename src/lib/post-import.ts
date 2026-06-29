@@ -56,6 +56,70 @@ function sanitize(s: string): string {
   return s.replace(/[<>:"/\\|?*\x00-\x1F]/g, "").trim().replace(/\.+$/, "");
 }
 
+// =============================================================================
+// Jellyfin-compatible naming.
+//
+// Jellyfin scans the library and matches files to TMDB via:
+//   - Folder name: "Title (Year)" for movies, "Show Name (Year)" for series
+//   - Optional [tmdbid-NNNN] suffix to lock the match unambiguously
+//   - Episode files: "Show - SxxExx[ - Episode Name].ext"
+//
+// Without this naming convention, Jellyfin fails to match the file and the
+// item never appears as "playable" — which is what blocks FrankeinStream's
+// getPlaybackAvailability() check from ever returning true.
+// =============================================================================
+
+/** Build "Title (Year) [tmdbid-N]" — used for both movie + series folders. */
+function jellyfinBaseFolder(media: any | null, fallbackName: string, fallbackYear?: number): string {
+  if (media?.title) {
+    const year = media.year ?? fallbackYear;
+    const yearPart = year ? ` (${year})` : "";
+    const tmdbPart = media.tmdbId ? ` [tmdbid-${media.tmdbId}]` : "";
+    return sanitize(`${media.title}${yearPart}${tmdbPart}`);
+  }
+  // No Media doc — best-effort sanitize. Jellyfin won't match TMDB but at
+  // least the file is in the library and the user can manually fix it.
+  return sanitize(fallbackName);
+}
+
+function jellyfinMovieFolderName(media: any | null, torrentName: string): string {
+  return jellyfinBaseFolder(media, torrentName);
+}
+
+function jellyfinMovieFileName(media: any | null, videoPath: string, torrentName: string): string {
+  const ext = path.extname(videoPath);
+  if (media?.title) {
+    const yearPart = media.year ? ` (${media.year})` : "";
+    return sanitize(`${media.title}${yearPart}`) + ext;
+  }
+  return path.basename(videoPath);
+}
+
+function jellyfinShowFolderName(media: any | null, parsedShow: string): string {
+  return jellyfinBaseFolder(media, parsedShow);
+}
+
+function jellyfinEpisodeFileName(
+  media: any | null,
+  tv: { show: string; season: number; episode: number; episodeEnd?: number },
+  videoPath: string,
+): string {
+  const ext = path.extname(videoPath);
+  const sxxexx = `S${String(tv.season).padStart(2, "0")}E${String(tv.episode).padStart(2, "0")}${
+    tv.episodeEnd && tv.episodeEnd !== tv.episode ? `-E${String(tv.episodeEnd).padStart(2, "0")}` : ""
+  }`;
+  const showLabel = media?.title ?? tv.show;
+  // Try to enrich with the TMDB episode name when we have it in Media.seasons[].episodes
+  let episodeName: string | undefined;
+  if (media?.seasons) {
+    const season = (media.seasons as any[]).find((s) => s.number === tv.season);
+    const ep = season?.episodes?.find((e: any) => e.number === tv.episode);
+    if (ep?.name) episodeName = String(ep.name);
+  }
+  const namePart = episodeName ? ` - ${episodeName}` : "";
+  return sanitize(`${showLabel} - ${sxxexx}${namePart}`) + ext;
+}
+
 function listVideosRecursive(root: string, max = 4): string[] {
   const out: string[] = [];
   const walk = (dir: string, depth: number) => {
@@ -209,6 +273,14 @@ export async function importCompletedTorrent(opts: {
     };
   }
 
+  // Resolve the Media doc early — we need title/year/tmdbId for Jellyfin-standard
+  // naming. Without this, Jellyfin can't match the file to its TMDB metadata and
+  // FrankeinStream's getPlaybackAvailability() never reports the item as "ready".
+  const dlForMedia = await Download.findById(opts.downloadId).lean<any>();
+  const mediaDoc = dlForMedia?.mediaId
+    ? await Media.findOne({ _id: dlForMedia.mediaId, userId }).lean<any>()
+    : null;
+
   // Walk content path. Single file = treat as one-video torrent.
   const stat = fs.statSync(contentPath);
   const videos = stat.isDirectory()
@@ -234,19 +306,22 @@ export async function importCompletedTorrent(opts: {
     let dstDir: string;
     let dstFile: string;
     if (category === "substitutarr-movies") {
-      dstDir = path.join(moviesRoot, sanitize(torrentName));
-      dstFile = path.basename(v);
+      // Jellyfin naming: "Title (Year) [tmdbid-X]/Title (Year).ext"
+      // Falls back to a sanitized torrent name when Media metadata is missing.
+      const folderName = jellyfinMovieFolderName(mediaDoc, torrentName);
+      dstDir = path.join(moviesRoot, folderName);
+      dstFile = jellyfinMovieFileName(mediaDoc, v, torrentName);
     } else {
-      // TV: parse SxxExx → Show/Season NN/
+      // TV: parse SxxExx → "Show (Year) [tmdbid-X]/Season NN/Show - SxxExx[ - Episode Name].ext"
       const tv = parseTv(path.basename(v));
       if (!tv) {
         skipped.push(`could not parse SxxExx: ${path.basename(v)}`);
         continue;
       }
-      const showSafe = sanitize(tv.show);
+      const showFolder = jellyfinShowFolderName(mediaDoc, tv.show);
       const seasonDir = `Season ${String(tv.season).padStart(2, "0")}`;
-      dstDir = path.join(tvRoot, showSafe, seasonDir);
-      dstFile = path.basename(v);
+      dstDir = path.join(tvRoot, showFolder, seasonDir);
+      dstFile = jellyfinEpisodeFileName(mediaDoc, tv, v);
     }
     const dst = path.join(dstDir, dstFile);
     const r = hardlinkIdempotent(v, dst);

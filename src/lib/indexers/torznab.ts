@@ -1,10 +1,7 @@
 import type { Indexer, Release, SearchInput } from "./types";
 import { parseQuality } from "./quality";
 import { parseStringPromise } from "xml2js";
-import { log } from "@/lib/logger";
-
-const UA =
-  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) substitutarr/0.1";
+import { fetchWithCloudflareBypass } from "./cloudflare";
 
 /**
  * Generic Torznab adapter — works with any indexer that exposes the spec
@@ -13,6 +10,11 @@ const UA =
  * The URL the user gives can be either:
  *   - the bare host: https://c411.org           → we append /api/torznab
  *   - the full endpoint: https://c411.org/api/torznab
+ *
+ * All HTTP calls go through fetchWithCloudflareBypass — UA rotation, session
+ * cookie persistence, exponential backoff, and optional FlareSolverr fallback.
+ * FrankeinStream's shadow run showed 24/46 failures from C411 returning 5xx or
+ * Cloudflare challenges; this is the fix.
  */
 export class TorznabIndexer implements Indexer {
   kind = "torznab";
@@ -93,25 +95,9 @@ export class TorznabIndexer implements Indexer {
   }
 
   private async fetchWithRetry(url: string): Promise<string | null> {
-    for (let attempt = 0; attempt < 2; attempt++) {
-      try {
-        const ctrl = new AbortController();
-        const t = setTimeout(() => ctrl.abort(), 25_000);
-        const res = await fetch(url, {
-          headers: { "User-Agent": UA, Accept: "application/xml,text/xml,*/*" },
-          signal: ctrl.signal,
-        });
-        clearTimeout(t);
-        if (res.ok) return await res.text();
-        log.warn(`torznab ${this.name} HTTP ${res.status}`, { url });
-        if ([521, 522, 524].includes(res.status) && attempt === 0) continue;
-        return null;
-      } catch (e: any) {
-        log.warn(`torznab ${this.name} fetch error`, { attempt, message: e.message });
-        if (attempt === 0) continue;
-        return null;
-      }
-    }
-    return null;
+    const r = await fetchWithCloudflareBypass(url, { acceptXml: true, timeoutMs: 25_000 });
+    if (r.ok) return r.body;
+    // Surface a meaningful error to the caller (searchAll aggregates it)
+    throw new Error(r.error ?? `indexer unreachable (status ${r.status})`);
   }
 }

@@ -2,13 +2,20 @@ import { connectMongo } from "./mongo";
 import { Profile } from "@/models/Profile";
 import { PROFILE_PRESETS } from "./profile-presets";
 
-// Sensible default fallback chain for the seeded presets:
-//   Référence 4K Atmos → 1080p VFF Balanced → Storage Saver 720p
-//   VOSTFR Cinéphile  → 1080p VFF Balanced
+// Sensible default fallback chain for the seeded presets, ending on the
+// "Last Resort" safety-net so we always end on an accept-anything profile
+// rather than failing. FrankeinStream shadow run found 2/46 failures where
+// stricter profiles filtered everything — Last Resort catches those.
+//   Référence 4K Atmos -> 1080p VFF Balanced -> Storage Saver 720p -> Last Resort
+//   VOSTFR Cinéphile   -> 1080p VFF Balanced
+//   Storage Saver 720p -> Last Resort
+//   Quick & Dirty      -> Last Resort
 const FALLBACK_LINKS: Record<string, string> = {
   "Référence 4K Atmos": "1080p VFF Balanced",
   "1080p VFF Balanced": "Storage Saver 720p",
   "VOSTFR Cinéphile": "1080p VFF Balanced",
+  "Storage Saver 720p": "Fallback - Last Resort",
+  "Quick & Dirty": "Fallback - Last Resort",
 };
 
 /**

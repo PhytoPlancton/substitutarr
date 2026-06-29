@@ -24,12 +24,22 @@ export function loose(s: string): string {
 }
 
 /** Generate query variants for indexer search.
- *  Trackers handle ":" inconsistently — some keep "Spider-Man No Way Home",
- *  some "Spider-Man.No.Way.Home", some only "Spider-Man". Try the most
- *  permissive first. */
+ *  Trackers handle punctuation/diacritics inconsistently — some keep
+ *  "Spider-Man: No Way Home", some "Spider-Man.No.Way.Home", some only
+ *  "Spider-Man". For non-English films the title is sometimes only matched
+ *  in its loose (ASCII alphanumeric) form. Generate the most permissive
+ *  variants and let dedupe trim them.
+ *
+ *  FrankeinStream shadow run logged 16 "0 results across all variants"
+ *  failures on French titles — these variants are designed to widen the net
+ *  for that case without spamming the tracker.
+ */
 export function queryVariants(title: string): string[] {
+  const original = title.trim();
   const t = normalize(title);
   const variants = new Set<string>([t]);
+  if (original !== t) variants.add(original); // keep accented form too — some trackers index it
+
   // Colon handling
   if (t.includes(":")) {
     variants.add(t.replace(/:/g, " "));
@@ -42,9 +52,21 @@ export function queryVariants(title: string): string[] {
     variants.add(t.replace(/['']/g, ""));
     variants.add(t.replace(/['']/g, " "));
   }
+  // Hyphens: "Spider-Man" → "Spider Man" + "SpiderMan"
+  if (/[-]/.test(t)) {
+    variants.add(t.replace(/-/g, " "));
+    variants.add(t.replace(/-/g, ""));
+  }
   // Remove "(Year)" if present
   variants.add(t.replace(/\s*\(\d{4}\)\s*/g, " ").trim());
-  return [...variants].filter(Boolean);
+  // "The " prefix — some trackers index without leading article
+  if (/^the\s/i.test(t)) variants.add(t.replace(/^the\s/i, ""));
+  // "Le/La/Les " prefix for FR titles
+  if (/^(le|la|les|l')\s?/i.test(t)) variants.add(t.replace(/^(le|la|les|l')\s?/i, ""));
+  // Loose alnum — last-resort net (used when the title has weird unicode)
+  const looseForm = t.toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
+  if (looseForm && looseForm !== t.toLowerCase()) variants.add(looseForm);
+  return [...variants].map((v) => v.trim()).filter(Boolean);
 }
 
 /** Strip the TMDB title from a release name to safely extract the year.
