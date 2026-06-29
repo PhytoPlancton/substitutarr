@@ -127,6 +127,28 @@ function jitter(ms: number): number {
   return ms + Math.floor(Math.random() * 800);
 }
 
+/**
+ * Classify the failure so the caller can log a real cause (vs the old
+ * speculative "Cloudflare 5xx or timeout"). Helps tell rate-limit from
+ * auth issue from genuine downtime.
+ */
+function classifyFailure(status: number, body: string, error: string | undefined): string {
+  if (error) return `network error: ${error}`;
+  if (status === 401) return "auth failed (HTTP 401) — check the indexer API key";
+  if (status === 403) {
+    if (isCloudflareChallenge(body, status)) return "Cloudflare 403 challenge — site is JS-protected";
+    return "forbidden (HTTP 403) — API key revoked or IP blocked?";
+  }
+  if (status === 429) return "rate-limited (HTTP 429) — slow down request rate or wait";
+  if (status === 404) return "not found (HTTP 404) — wrong Torznab URL?";
+  if (status >= 500 && status < 600) {
+    if (isCloudflareChallenge(body, status)) return `Cloudflare ${status} — tracker behind CF is down or under attack`;
+    return `tracker server error (HTTP ${status})`;
+  }
+  if (isCloudflareChallenge(body, status)) return `Cloudflare JS challenge (HTTP ${status}) — needs FlareSolverr`;
+  return `unexpected HTTP ${status}`;
+}
+
 export type CloudflareFetchResult = {
   ok: boolean;
   body: string;
@@ -154,9 +176,11 @@ export async function fetchWithCloudflareBypass(
   let lastStatus = 0;
   let lastBody = "";
   let lastError: string | undefined;
+  let retryAfterMs: number | null = null;
 
   for (let attempt = 0; attempt < BACKOFF_MS.length; attempt++) {
-    const delay = BACKOFF_MS[attempt];
+    let delay = BACKOFF_MS[attempt];
+    if (retryAfterMs != null && retryAfterMs > delay) delay = retryAfterMs;
     if (delay > 0) await new Promise((r) => setTimeout(r, jitter(delay)));
 
     try {
@@ -176,6 +200,15 @@ export async function fetchWithCloudflareBypass(
       const setCookies = res.headers.getSetCookie?.() ?? [];
       if (setCookies.length) mergeSetCookie(hostOf(url), setCookies);
 
+      // Honor Retry-After (RFC 7231) — either seconds or HTTP-date
+      const retryAfter = res.headers.get("retry-after");
+      if (retryAfter) {
+        const seconds = /^\d+$/.test(retryAfter) ? Number(retryAfter) : (Date.parse(retryAfter) - Date.now()) / 1000;
+        if (Number.isFinite(seconds) && seconds > 0 && seconds < 120) {
+          retryAfterMs = seconds * 1000;
+        }
+      }
+
       const body = await res.text();
       lastStatus = res.status;
       lastBody = body;
@@ -183,17 +216,21 @@ export async function fetchWithCloudflareBypass(
       if (res.ok && !isCloudflareChallenge(body, res.status)) {
         return { ok: true, body, status: res.status, attempts: attempt + 1, flaresolverrUsed: false };
       }
-      // Cloudflare-likely failure — log and retry
-      log.warn(`cloudflare-bypass: bad response (attempt ${attempt + 1})`, {
+      // Auth/4xx errors don't benefit from retry (except 429). Bail out fast.
+      const isRetryable = res.status === 429 || res.status >= 500 || isCloudflareChallenge(body, res.status);
+      log.warn(`indexer fetch failed (attempt ${attempt + 1})`, {
         host: hostOf(url),
         status: res.status,
-        bodySample: body.slice(0, 120),
+        cause: classifyFailure(res.status, body, undefined),
+        bodySample: body.slice(0, 200),
+        retryAfter: retryAfterMs ? `${retryAfterMs}ms` : undefined,
       });
+      if (!isRetryable) break;
     } catch (e: any) {
       lastError = e?.message ?? String(e);
-      log.warn(`cloudflare-bypass: fetch threw (attempt ${attempt + 1})`, {
+      log.warn(`indexer fetch threw (attempt ${attempt + 1})`, {
         host: hostOf(url),
-        message: lastError,
+        cause: classifyFailure(0, "", lastError),
       });
     }
   }
@@ -218,6 +255,6 @@ export async function fetchWithCloudflareBypass(
     status: lastStatus,
     attempts: BACKOFF_MS.length,
     flaresolverrUsed: false,
-    error: lastError ?? `Cloudflare bypass failed after ${BACKOFF_MS.length} attempts (last status ${lastStatus})`,
+    error: classifyFailure(lastStatus, lastBody, lastError),
   };
 }

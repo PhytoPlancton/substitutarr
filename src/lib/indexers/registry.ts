@@ -11,6 +11,54 @@ import { recordHealth } from "@/lib/connection-health";
 import { filterBlocked } from "@/lib/blocklist";
 import type { ProfileDoc } from "@/models/Profile";
 
+// ---- In-process search cache ----
+// Many variants of the same title produce identical queries after tracker-side
+// normalization (e.g. "Le Grand Bleu", "Grand Bleu", "le grand bleu" → same
+// XML response). Caching the indexer.search() result for a few minutes cuts
+// outbound request volume dramatically and dodges aggressive rate-limits.
+const SEARCH_CACHE_TTL_MS = 10 * 60_000;
+type CacheEntry = { releases: Release[]; expiresAt: number; error?: Error };
+const searchCache = new Map<string, CacheEntry>();
+
+function cacheKey(indexerId: string, input: SearchInput): string {
+  return [
+    indexerId,
+    input.type,
+    input.title?.toLowerCase().trim() ?? "",
+    input.season ?? "",
+    input.episode ?? "",
+    input.tmdbId ?? "",
+  ].join("|");
+}
+
+async function cachedSearch(
+  indexerId: string,
+  input: SearchInput,
+  loader: () => Promise<Release[]>,
+): Promise<Release[]> {
+  const key = cacheKey(indexerId, input);
+  const now = Date.now();
+  const hit = searchCache.get(key);
+  if (hit && hit.expiresAt > now) {
+    if (hit.error) throw hit.error;
+    return hit.releases;
+  }
+  try {
+    const releases = await loader();
+    searchCache.set(key, { releases, expiresAt: now + SEARCH_CACHE_TTL_MS });
+    // Periodic gc — sweep expired entries when the map gets big
+    if (searchCache.size > 256) {
+      for (const [k, v] of searchCache) if (v.expiresAt <= now) searchCache.delete(k);
+    }
+    return releases;
+  } catch (e: any) {
+    // Cache failures too, but for a SHORTER window so a transient indexer
+    // outage doesn't keep returning a stale error for 10 minutes.
+    searchCache.set(key, { releases: [], expiresAt: now + 30_000, error: e });
+    throw e;
+  }
+}
+
 type IndexerWithId = { id: string; name: string; indexer: Indexer };
 
 function build(doc: IndexerDoc): Indexer | null {
@@ -77,10 +125,17 @@ export async function searchAll(
   const errors: SearchAllResult["errors"] = [];
   const raw: Release[] = [];
 
-  // Fan out: each (indexer, title-variant) pair, in parallel
+  // Fan out: each (indexer, title-variant) pair, in parallel.
+  // Each leg goes through a short-lived in-process cache so the same query
+  // doesn't hammer the indexer twice within `SEARCH_CACHE_TTL_MS`. With 8
+  // title variants + 3 indexers = 24 legs per request, and most variants
+  // collapse to the same result set, the cache typically slashes outbound
+  // request volume 3-5x and helps avoid tripping rate-limits.
   const tasks = pairs.flatMap((p) => titlesToTry.map((title) => ({ p, title })));
   const settled = await Promise.allSettled(
-    tasks.map(({ p, title }) => p.indexer.search({ ...input, title })),
+    tasks.map(({ p, title }) =>
+      cachedSearch(p.id, { ...input, title }, () => p.indexer.search({ ...input, title })),
+    ),
   );
 
   // Aggregate per-indexer outcome — if ANY variant succeeds, indexer is healthy.
