@@ -244,6 +244,18 @@ export async function grabBest(opts: {
   const sep = lastErrors.length ? lastErrors.map((e) => `${e.indexer}: ${e.message}`).join(" · ") : "";
   const detail = lastRejected ? `; ${lastRejected} filtered out by last profile` : "";
   const errorMsg = `no releases passed any profile — ${sep}${detail}`;
+  // Persist the failure so /api/external/requests/:id can report it in
+  // `grab.state = "grabFailed"` — external callers polling that endpoint
+  // otherwise have no way to know a background grab gave up.
+  void Activity.create({
+    userId: opts.userId,
+    mediaId: media._id,
+    kind: "grab_failed",
+    title: media.title,
+    detail: errorMsg,
+    season: opts.season,
+    episode: opts.episode,
+  }).catch(() => {});
   void emitWebhook(opts.userId, "request.failed", {
     type: media.type,
     mediaId: media._id?.toString(),

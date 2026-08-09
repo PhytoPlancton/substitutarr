@@ -71,11 +71,30 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       episode: d.episode,
       indexer: d.indexer,
       qbHash: d.qbHash,
+      quality: d.quality,
       sizeBytes: d.sizeBytes,
       seeders: d.seeders,
+      /** Absolute path where the file was hardlinked in the library. Set once
+       *  the import pipeline finishes; null while the torrent is still active
+       *  or if the import step hasn't run yet. Callers can fs.access this to
+       *  confirm Jellyfin will see the file. */
+      importedPath: d.importedPath ?? null,
       createdAt: d.createdAt,
       completedAt: d.completedAt,
     })),
+    /**
+     * Rolled-up status for the external caller. Callers polling this endpoint
+     * to detect "grab succeeded / failed" should read this before falling back
+     * to individual download rows.
+     *
+     *   pending    - Media exists but no Download row yet (grab in flight, or async grab hasn't started)
+     *   searching  - grab is running (no Download row within 60s of upsert)
+     *   grabFailed - no Download row AND the last grabbed_failed Activity is recent
+     *   downloading- at least one Download is downloading/queued
+     *   downloaded - all expected downloads are completed AND have importedPath
+     *   partial    - some downloads completed but not all (TV-only)
+     */
+    grab: rollupGrabState(media, downloads, activity),
     activity: activity.map((a) => ({
       kind: a.kind,
       title: a.title,
@@ -86,6 +105,41 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       at: a.createdAt,
     })),
   });
+}
+
+function rollupGrabState(
+  media: any,
+  downloads: any[],
+  activity: any[],
+): { state: string; detail?: string; lastError?: string } {
+  // Look for the most recent grab failure Activity — that's how we surface
+  // "no releases passed any profile" style errors when there's no Download row.
+  const lastFailed = activity.find((a) => a.kind === "grab_failed" || a.kind === "request.failed");
+
+  if (downloads.length === 0) {
+    // No Download row yet. Either grab is still searching, or it failed.
+    if (lastFailed) {
+      return { state: "grabFailed", detail: lastFailed.detail, lastError: lastFailed.detail };
+    }
+    const ageMs = media.addedAt ? Date.now() - new Date(media.addedAt).getTime() : Infinity;
+    return ageMs < 60_000 ? { state: "searching" } : { state: "pending" };
+  }
+
+  const active = downloads.filter((d) => d.state === "downloading" || d.state === "queued");
+  const completed = downloads.filter((d) => d.state === "completed");
+  const withImport = completed.filter((d) => !!d.importedPath);
+
+  if (active.length > 0) return { state: "downloading" };
+  if (completed.length > 0 && withImport.length === completed.length) {
+    return { state: "downloaded" };
+  }
+  if (completed.length > 0 && withImport.length > 0) {
+    return { state: "partial", detail: `${withImport.length}/${completed.length} files imported` };
+  }
+  if (completed.length > 0) {
+    return { state: "completedNoImport", detail: "torrent done but file not yet hardlinked into library" };
+  }
+  return { state: "pending" };
 }
 
 export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
